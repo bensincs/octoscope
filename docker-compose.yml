@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gh-issue-hygiene-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hygiene
+      POSTGRES_PASSWORD: hygiene
+      POSTGRES_DB: hygiene
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hygiene -d hygiene"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

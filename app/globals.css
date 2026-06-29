@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+/* Map Tailwind color tokens to themeable CSS variables (GitHub Primer). */
+@theme {
+  --color-canvas: var(--canvas);
+  --color-inset: var(--inset);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-bordermuted: var(--border-muted);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accentemphasis: var(--accent-emphasis);
+  --color-success: var(--success);
+  --color-successemphasis: var(--success-emphasis);
+  --color-danger: var(--danger);
+  --color-attention: var(--attention);
+  --color-done: var(--done);
+
+  --color-header: var(--header-bg);
+  --color-headerfg: var(--header-fg);
+  --color-headermuted: var(--header-muted);
+  --color-headerborder: var(--header-border);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+/* Light (default) — GitHub light */
+:root {
+  --canvas: #ffffff;
+  --inset: #f6f8fa;
+  --subtle: #f6f8fa;
+  --border: #d0d7de;
+  --border-muted: #d8dee4;
+  --fg: #1f2328;
+  --muted: #656d76;
+  --accent: #0969da;
+  --accent-emphasis: #0969da;
+  --success: #1a7f37;
+  --success-emphasis: #1f883d;
+  --danger: #cf222e;
+  --attention: #9a6700;
+  --done: #8250df;
+  --header-bg: #ffffff;
+  --header-fg: #1f2328;
+  --header-muted: #656d76;
+  --header-border: #d0d7de;
+  color-scheme: light;
+}
+
+/* Dark — GitHub dark */
+.dark {
+  --canvas: #0d1117;
+  --inset: #010409;
+  --subtle: #161b22;
+  --border: #30363d;
+  --border-muted: #21262d;
+  --fg: #e6edf3;
+  --muted: #7d8590;
+  --accent: #2f81f7;
+  --accent-emphasis: #1f6feb;
+  --success: #3fb950;
+  --success-emphasis: #238636;
+  --danger: #f85149;
+  --attention: #d29922;
+  --done: #a371f7;
+  --header-bg: #010409;
+  --header-fg: #e6edf3;
+  --header-muted: #7d8590;
+  --header-border: #21262d;
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reusable Primer-ish primitives */
+.gh-card {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+.gh-input {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+}
+.gh-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.btn {
+  border: 1px solid var(--border);
+  background: var(--subtle);
+  color: var(--fg);
+  border-radius: 6px;
+  font-weight: 500;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.btn:hover {
+  background: color-mix(in srgb, var(--fg) 8%, var(--canvas));
+}
+.btn-primary {
+  border: 1px solid color-mix(in srgb, #1a7f37 60%, transparent);
+  background: var(--success-emphasis);
+  color: #ffffff;
+  border-radius: 6px;
+  font-weight: 600;
+  transition: filter 0.12s ease;
+}
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* GitHub-style header ghost button (adapts to light/dark header) */
+.gh-header-ghost {
+  color: var(--header-fg);
+  border-radius: 6px;
+  transition: background 0.12s ease;
+}
+.gh-header-ghost:hover {
+  background: color-mix(in srgb, var(--header-fg) 8%, transparent);
+}
+
+/* GitHub-style underline sub-nav tabs */
+.gh-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.5rem 0.75rem;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.gh-tab:hover {
+  color: var(--fg);
+  border-bottom-color: var(--border);
+}
+.gh-tab[data-active="true"] {
+  color: var(--fg);
+  font-weight: 600;
+  border-bottom-color: #fd8c73;
+}
+.dark .gh-tab[data-active="true"] {
+  border-bottom-color: #f78166;
+}
+
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+@keyframes fadeup {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fadeup {
+  animation: fadeup 0.3s ease both;
+}

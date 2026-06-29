@@ -1,0 +1,1 @@
+# Keeps the public/ directory present for the container build (Next.js standalone copies it).
