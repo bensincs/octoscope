@@ -1,12 +1,63 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/Confirm";
 
-export default function DangerPanel({ project, onDeleted }) {
+export default function DangerPanel({ project, onDeleted, onChanged }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState(null);
+  const [target, setTarget] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
+  // Only members who have actually signed in can own a project: ownership is a
+  // user id, and a pending invite has none.
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${project.id}/collaborators`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load members");
+      setMembers(
+        (data.collaborators ?? []).filter((c) => !c.pending && c.role !== "owner")
+      );
+    } catch {
+      setMembers([]);
+    }
+  }, [project.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function transfer() {
+    const member = members?.find((m) => m.id === target);
+    if (!member) return;
+    const ok = await confirm({
+      title: "Transfer ownership?",
+      body: `${member.login} will become the owner of “${project.name}”. You will be demoted to admin and will no longer be able to delete the project or transfer it again.`,
+      confirmLabel: `Make ${member.login} the owner`,
+    });
+    if (!ok) return;
+    setTransferring(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/transfer-ownership`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collaboratorId: target }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.fields?.[0]?.message || data.error || "Transfer failed");
+      }
+      toast.success(`${member.login} now owns this project.`);
+      await onChanged?.();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setTransferring(false);
+    }
+  }
 
   async function remove() {
     const ok = await confirm({
@@ -36,6 +87,44 @@ export default function DangerPanel({ project, onDeleted }) {
         Danger zone
       </h2>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/40 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-fg">Transfer ownership</p>
+          <p className="mt-0.5 text-xs text-muted">
+            Hand this project to another member. You keep access as an admin,
+            but lose the ability to delete or transfer it.
+          </p>
+          {members?.length === 0 && (
+            <p className="mt-1 text-xs text-muted">
+              No eligible members — someone must be a member and have signed in
+              at least once.
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <select
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            disabled={!members?.length}
+            className="gh-input px-2.5 py-1.5 text-sm disabled:opacity-50"
+          >
+            <option value="">Choose a member…</option>
+            {(members ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.login}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={transfer}
+            disabled={!target || transferring}
+            className="rounded-md border border-danger/40 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/10 disabled:opacity-50"
+          >
+            {transferring ? "Transferring…" : "Transfer"}
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/40 px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-fg">Delete this project</p>
           <p className="mt-0.5 text-xs text-muted">

@@ -13,6 +13,7 @@ import { Spinner } from "@/components/projectForms";
 //   Issues        — only once at least one repository is connected
 //   Pull requests — only once at least one repository is connected
 //   Decisions     — only once an ADR repo + folder are configured
+//   Agent         — only once a project admin enables it
 //   Environments  — only once at least one environment is configured
 //
 // Rulebook is always present: it describes configuration, which exists whether
@@ -54,6 +55,7 @@ export default function ProjectLayout({ children, params }) {
   const hasEnvironments = (project?.environments?.length ?? 0) > 0;
   const hasRepos = (project?.repos?.length ?? 0) > 0;
   const hasAdrs = !!project?.adrRepoId && !!project?.adrPath;
+  const hasAgent = !!project?.agentEnabled;
 
   useEffect(() => {
     const go = (path) => () => router.push(`/projects/${id}${path}`);
@@ -70,6 +72,7 @@ export default function ProjectLayout({ children, params }) {
         rulebook: "Rulebook",
         "pull-requests": "Pull requests",
         adrs: "Decisions",
+        agent: "Agent",
         environments: "Environments",
         settings: "Settings",
       }[section];
@@ -116,6 +119,15 @@ export default function ProjectLayout({ children, params }) {
               label: "Decisions",
               active: section === "adrs",
               onClick: go("/adrs"),
+            },
+          ]
+        : []),
+      ...(hasAgent
+        ? [
+            {
+              label: "Agent",
+              active: section === "agent",
+              onClick: go("/agent"),
             },
           ]
         : []),

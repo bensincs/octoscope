@@ -69,6 +69,9 @@ param customDomain string = ''
 @description('Image for the schema-migration job (Dockerfile.migrate). Leave empty until it has been built; the job is only created once this is set.')
 param migrateImage string = ''
 
+@description('OAuth client id used for the GitHub Copilot device flow. Must belong to an application GitHub recognises for Copilot. Leave empty to disable the agent entirely.')
+param copilotClientId string = ''
+
 @description('Password for the least-privilege application database role. Create the role first with: db-ops.cjs ensure-app-role. Leave empty to fall back to the admin account (not recommended).')
 @secure()
 param appDbPassword string = ''
@@ -337,6 +340,13 @@ resource containerApp 'Microsoft.App/containerApps@2025-07-01' = {
             {
               name: 'PORT'
               value: '3000'
+            }
+            {
+              // Empty disables the agent: lib/copilot.js reports it
+              // unconfigured rather than falling back to somebody else's
+              // OAuth application.
+              name: 'COPILOT_CLIENT_ID'
+              value: copilotClientId
             }
           ]
           // Without probes, Container Apps marks a replica ready as soon as the

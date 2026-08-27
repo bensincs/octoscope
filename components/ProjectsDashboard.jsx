@@ -36,13 +36,11 @@ export default function ProjectsDashboard() {
   }, [load]);
 
   // This is the home surface: clear any project breadcrumb and show the tabs.
-  // Super admins also get a Settings tab next to Projects.
+  // Settings is per-user now (Copilot connection), so everyone gets the tab.
   useEffect(() => {
     setBreadcrumb([]);
     const tabs = [{ label: "Projects", active: true }];
-    if (superAdmin) {
-      tabs.push({ label: "Settings", onClick: () => router.push("/settings") });
-    }
+    tabs.push({ label: "Settings", onClick: () => router.push("/settings") });
     setTabs(tabs);
     return () => setTabs([]);
   }, [setBreadcrumb, setTabs, superAdmin, router]);

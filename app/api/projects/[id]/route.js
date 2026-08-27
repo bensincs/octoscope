@@ -25,6 +25,8 @@ export async function PATCH(req, { params }) {
       includeClosedIssues: body.includeClosedIssues,
       adrRepoId: body.adrRepoId,
       adrPath: body.adrPath,
+      agentEnabled: body.agentEnabled,
+      agentModel: body.agentModel,
     })
   );
 }

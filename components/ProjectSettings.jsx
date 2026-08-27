@@ -18,6 +18,7 @@ import {
   ServerIcon,
   BookmarkIcon,
   FileIcon,
+  CopilotIcon,
 } from "@primer/octicons-react";
 import { useOwners } from "@/components/projectForms";
 import { meetsRole } from "@/lib/access";
@@ -30,6 +31,7 @@ import CollaboratorsPanel from "./settings/CollaboratorsPanel";
 import EnvironmentsPanel from "./settings/EnvironmentsPanel";
 import WelcomePanel from "./settings/WelcomePanel";
 import AdrPanel from "./settings/AdrPanel";
+import AgentPanel from "./settings/AgentPanel";
 import DangerPanel from "./settings/DangerPanel";
 
 const NAV = [
@@ -48,6 +50,7 @@ const NAV = [
       { key: "repos", label: "Repositories", icon: <RepoIcon size={16} /> },
       { key: "boards", label: "Boards", icon: <ProjectIcon size={16} /> },
       { key: "adrs", label: "Decision records", icon: <FileIcon size={16} /> },
+      { key: "agent", label: "Agent", icon: <CopilotIcon size={16} /> },
     ],
   },
   {
@@ -201,6 +204,9 @@ export default function ProjectSettings({
           {section === "adrs" && (
             <AdrPanel project={project} patch={patch} canEdit={canEdit} />
           )}
+          {section === "agent" && (
+            <AgentPanel project={project} patch={patch} canAdmin={canAdmin} />
+          )}
           {section === "environments" && (
             <EnvironmentsPanel
               project={project}
@@ -212,7 +218,7 @@ export default function ProjectSettings({
             <CollaboratorsPanel project={project} canAdmin={canAdmin} />
           )}
           {section === "danger" && isOwner && (
-            <DangerPanel project={project} onDeleted={onDeleted} />
+            <DangerPanel project={project} onDeleted={onDeleted} onChanged={reload} />
           )}
         </div>
       </div>
