@@ -18,7 +18,7 @@ import {
   ServerIcon,
   BookmarkIcon,
   FileIcon,
-  CopilotIcon,
+  CommentDiscussionIcon,
 } from "@primer/octicons-react";
 import { useOwners } from "@/components/projectForms";
 import { meetsRole } from "@/lib/access";
@@ -50,7 +50,7 @@ const NAV = [
       { key: "repos", label: "Repositories", icon: <RepoIcon size={16} /> },
       { key: "boards", label: "Boards", icon: <ProjectIcon size={16} /> },
       { key: "adrs", label: "Decision records", icon: <FileIcon size={16} /> },
-      { key: "agent", label: "Agent", icon: <CopilotIcon size={16} /> },
+      { key: "agent", label: "Agent", icon: <CommentDiscussionIcon size={16} /> },
     ],
   },
   {

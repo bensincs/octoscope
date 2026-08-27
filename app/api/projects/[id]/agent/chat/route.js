@@ -1,21 +1,20 @@
 import { getUserId } from "@/lib/session";
 import { errorResponse } from "@/lib/apiHelpers";
-import { getAgentSettings, getLlmToken } from "@/lib/db/projects";
-import { streamChat, DEFAULT_COPILOT_MODEL, CopilotError } from "@/lib/copilot";
+import { getAgentConnection } from "@/lib/db/projects";
+import { streamChat, DEFAULT_MODEL, AgentError } from "@/lib/agent";
 
 export const dynamic = "force-dynamic";
 
 const MAX_MESSAGES = 40;
 const MAX_CHARS = 24_000;
 
-// POST /api/projects/:id/agent/chat — stream a reply from the user's own LLM.
+// POST /api/projects/:id/agent/chat — stream a reply from the project's model.
 //
-// Not wrapped in withUser because the success path is a STREAM, not JSON: the
-// point is that the first token reaches the browser immediately rather than
-// after the whole reply is buffered.
+// Not wrapped in withUser because the success path is a STREAM, not JSON.
 //
-// The credential is the caller's own (a Copilot seat is per person), so nothing
-// here consults the project owner's credentials.
+// Viewer access: using the agent is not a configuration change. The API key
+// belongs to the project and is decrypted server-side only — it is never sent
+// to the browser, so a member can use the agent without ever holding the key.
 export async function POST(req, { params }) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "Not signed in." }, { status: 401 });
@@ -24,25 +23,23 @@ export async function POST(req, { params }) {
   const body = await req.json().catch(() => ({}));
 
   try {
-    const settings = await getAgentSettings(userId, id);
-    if (!settings.enabled) {
+    const conn = await getAgentConnection(userId, id);
+    if (!conn.enabled) {
       return Response.json(
         { error: "The agent is not enabled for this project." },
         { status: 400 }
       );
     }
-
-    const token = await getLlmToken(userId);
-    if (!token) {
+    if (!conn.baseUrl || !conn.apiKey) {
       return Response.json(
-        { error: "Connect your GitHub Copilot account first." },
+        { error: "The agent has no endpoint or API key configured." },
         { status: 428 }
       );
     }
 
-    // Bound the transcript. The client is ephemeral and replays history on
-    // every turn, so without a cap a long conversation grows unboundedly and
-    // eventually fails upstream with a far less obvious error.
+    // Bound the transcript. The client is ephemeral and replays history each
+    // turn, so without a cap a long conversation grows unboundedly and fails
+    // upstream with a far less obvious error.
     const messages = (Array.isArray(body.messages) ? body.messages : [])
       .filter((m) => m && typeof m.content === "string" && m.role)
       .slice(-MAX_MESSAGES)
@@ -52,8 +49,10 @@ export async function POST(req, { params }) {
       return Response.json({ error: "Nothing to send." }, { status: 400 });
     }
 
-    const upstream = await streamChat(token, {
-      model: settings.model || DEFAULT_COPILOT_MODEL,
+    const upstream = await streamChat({
+      baseUrl: conn.baseUrl,
+      apiKey: conn.apiKey,
+      model: conn.model || DEFAULT_MODEL,
       messages,
       signal: req.signal,
     });
@@ -66,7 +65,7 @@ export async function POST(req, { params }) {
       },
     });
   } catch (e) {
-    if (e instanceof CopilotError) {
+    if (e instanceof AgentError) {
       return Response.json({ error: e.message }, { status: e.status || 502 });
     }
     return errorResponse(e);

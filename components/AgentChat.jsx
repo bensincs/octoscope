@@ -1,7 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PaperAirplaneIcon, TrashIcon } from "@primer/octicons-react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Spinner } from "@/components/projectForms";
 import Markdown from "@/components/Markdown";
@@ -11,28 +10,18 @@ import Markdown from "@/components/Markdown";
 // Conversations are EPHEMERAL — held in component state and gone on reload.
 // Nothing is written to the database, so there is no question of who can read
 // whose messages, and no retention policy to get wrong.
+//
+// The model connection belongs to the PROJECT and is decrypted server-side, so
+// this component never handles an API key.
 export default function AgentChat({ projectId, project }) {
-  const router = useRouter();
   const toast = useToast();
-  const [cred, setCred] = useState(null); // null = loading
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
   const abortRef = useRef(null);
 
-  const loadCred = useCallback(async () => {
-    try {
-      const res = await fetch("/api/agent/credential");
-      setCred(await res.json());
-    } catch {
-      setCred({ configured: false, connected: false });
-    }
-  }, []);
 
-  useEffect(() => {
-    loadCred();
-  }, [loadCred]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,11 +30,6 @@ export default function AgentChat({ projectId, project }) {
   // Stop polling if the user navigates away mid sign-in.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  async function disconnect() {
-    await fetch("/api/agent/credential", { method: "DELETE" });
-    await loadCred();
-    toast.success("Disconnected.");
-  }
 
   async function send() {
     const text = input.trim();
@@ -123,47 +107,6 @@ export default function AgentChat({ projectId, project }) {
     }
   }
 
-  if (!cred) {
-    return (
-      <div className="flex items-center justify-center py-16 text-muted">
-        <Spinner className="h-5 w-5" />
-      </div>
-    );
-  }
-
-  if (!cred.configured) {
-    return (
-      <div className="rounded-md border border-attention/40 bg-attention/10 px-4 py-3 text-sm text-fg">
-        Copilot isn&apos;t configured on this deployment. An operator needs to set{" "}
-        <code className="rounded bg-subtle px-1 py-0.5 font-mono text-xs">
-          COPILOT_CLIENT_ID
-        </code>
-        .
-      </div>
-    );
-  }
-
-  if (!cred.connected) {
-    // The credential is per-user, so it is configured in USER settings rather
-    // than here — otherwise every project would offer its own copy of the same
-    // account-level connection.
-    return (
-      <div className="max-w-lg space-y-3">
-        <h1 className="text-xl font-normal text-fg">Agent</h1>
-        <p className="text-sm text-muted">
-          The agent uses <strong className="text-fg">your own</strong> GitHub
-          Copilot subscription, so nobody else&apos;s seat is spent on your
-          behalf. Connect it once and it works across every project.
-        </p>
-        <button
-          onClick={() => router.push("/settings")}
-          className="btn-primary px-3 py-1.5 text-sm"
-        >
-          Connect Copilot in settings
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-[calc(100vh-13rem)] flex-col gap-3">
@@ -171,8 +114,7 @@ export default function AgentChat({ projectId, project }) {
         <div>
           <h1 className="text-xl font-normal text-fg">Agent</h1>
           <p className="mt-0.5 text-xs text-muted">
-            {project.agentModel || "default model"} · your Copilot account
-            {cred.accountLogin && ` (${cred.accountLogin})`}
+            {project.agentModel || "default model"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -185,9 +127,6 @@ export default function AgentChat({ projectId, project }) {
               Clear
             </button>
           )}
-          <button onClick={disconnect} className="btn px-2.5 py-1 text-xs">
-            Disconnect
-          </button>
         </div>
       </div>
 

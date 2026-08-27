@@ -27,6 +27,8 @@ export async function PATCH(req, { params }) {
       adrPath: body.adrPath,
       agentEnabled: body.agentEnabled,
       agentModel: body.agentModel,
+      agentBaseUrl: body.agentBaseUrl,
+      agentApiKey: body.agentApiKey,
     })
   );
 }

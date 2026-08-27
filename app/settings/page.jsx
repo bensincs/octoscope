@@ -1,49 +1,33 @@
 "use client";
-// User settings, reached from the "Settings" tab next to "Projects".
+// Platform settings, reached from the "Settings" tab next to "Projects".
 //
-// Available to every signed-in user, not just super admins: it holds per-user
-// configuration such as the Copilot connection that powers the Agent tab. The
-// Platform section is added only for super admins — and the /api/admin/* routes
-// enforce that server-side regardless, so this is presentation, not security.
-import { useEffect, useMemo, useState } from "react";
+// Super-admin only. The agent's model connection is configured per PROJECT
+// rather than per user, so there is no account-level configuration to show
+// anyone else. Guarded client-side here; /api/admin/* enforces access
+// server-side regardless.
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldLockIcon, CopilotIcon } from "@primer/octicons-react";
+import { ShieldLockIcon } from "@primer/octicons-react";
 import { useNav } from "@/components/NavContext";
 import { useSuperAdmin } from "@/components/SuperAdminContext";
 import { Spinner } from "@/components/projectForms";
 import { NavButton } from "@/components/settings/primitives";
 import SuperAdminsPanel from "@/components/settings/SuperAdminsPanel";
-import CopilotPanel from "@/components/settings/CopilotPanel";
 
 export default function SettingsPage() {
   const router = useRouter();
   const { superAdmin, loading } = useSuperAdmin();
   const { setBreadcrumb, setTabs } = useNav();
-  const [section, setSection] = useState("copilot");
+  const [section, setSection] = useState("super-admins");
 
-  const nav = useMemo(() => {
-    const groups = [
-      {
-        heading: "Your account",
-        items: [
-          { key: "copilot", label: "GitHub Copilot", icon: <CopilotIcon size={16} /> },
-        ],
-      },
-    ];
-    if (superAdmin) {
-      groups.push({
-        heading: "Platform",
-        items: [
-          {
-            key: "super-admins",
-            label: "Super admins",
-            icon: <ShieldLockIcon size={16} />,
-          },
-        ],
-      });
-    }
-    return groups;
-  }, [superAdmin]);
+  const nav = [
+    {
+      heading: "Platform",
+      items: [
+        { key: "super-admins", label: "Super admins", icon: <ShieldLockIcon size={16} /> },
+      ],
+    },
+  ];
 
   useEffect(() => {
     setBreadcrumb([]);
@@ -59,6 +43,16 @@ export default function SettingsPage() {
       <main className="mx-auto max-w-6xl px-4 py-6">
         <div className="flex items-center justify-center py-24 text-muted">
           <Spinner className="h-5 w-5" />
+        </div>
+      </main>
+    );
+  }
+
+  if (!superAdmin) {
+    return (
+      <main className="mx-auto max-w-6xl px-4 py-6">
+        <div className="rounded-md border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
+          You don&apos;t have access to this page.
         </div>
       </main>
     );
@@ -91,8 +85,7 @@ export default function SettingsPage() {
         </nav>
 
         <div className="min-w-0">
-          {section === "copilot" && <CopilotPanel />}
-          {section === "super-admins" && superAdmin && <SuperAdminsPanel />}
+          {section === "super-admins" && <SuperAdminsPanel />}
         </div>
       </div>
     </main>
