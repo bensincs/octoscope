@@ -28,14 +28,17 @@ COPY scripts ./scripts
 # DATABASE_URL is injected as a job secret. Default: push the schema, then list
 # the resulting tables as a sanity check.
 #
-# --force is OPT-IN via ALLOW_DATA_LOSS. It auto-approves destructive
-# statements, so leaving it on permanently means a schema change that drops or
-# narrows a column silently discards data on the next deploy. Without it,
-# drizzle-kit prompts for confirmation; stdin is /dev/null so that prompt fails
-# the job loudly instead of hanging until the replica timeout.
+# push ALWAYS runs with --force, because without it drizzle-kit prompts, takes
+# the default when stdin is closed, and exits 0 having applied nothing — a
+# schema change that silently doesn't happen, reported as success.
+#
+# The data-loss guard is therefore ours: `preflight` compares the database with
+# schema.js and refuses to continue if the change would drop a table or column,
+# unless ALLOW_DATA_LOSS is set. `verify-schema` then asserts the change really
+# landed, so a no-op push can never again be mistaken for a successful one.
 #
 # --verbose logs every statement, so Log Analytics keeps a record of what ran.
 #
 # Override for other operations, e.g. seeding the first super admin:
 #   --command "node" --args "scripts/db-ops.cjs" "seed-admin" "<github-login>"
-CMD ["sh", "-c", "npx drizzle-kit push --verbose ${ALLOW_DATA_LOSS:+--force} < /dev/null && node scripts/db-ops.cjs tables"]
+CMD ["sh", "-c", "node scripts/db-ops.cjs preflight && npx drizzle-kit push --force --verbose && node scripts/db-ops.cjs verify-schema && node scripts/db-ops.cjs tables"]

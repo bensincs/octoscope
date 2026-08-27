@@ -11,7 +11,10 @@ export async function POST(req, { params }) {
   const { id, environmentId } = await params;
   const body = await req.json().catch(() => ({}));
   return withUser((userId) =>
-    claimEnvironment(userId, id, environmentId, { note: body.note })
+    claimEnvironment(userId, id, environmentId, {
+      note: body.note,
+      expiresInHours: body.expiresInHours,
+    })
   );
 }
 

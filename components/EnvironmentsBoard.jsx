@@ -3,6 +3,11 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { ServerIcon } from "@primer/octicons-react";
 import { meetsRole } from "@/lib/access";
+import {
+  CLAIM_DURATIONS,
+  DEFAULT_CLAIM_HOURS,
+  describeRemaining,
+} from "@/lib/environments";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/Confirm";
 import Modal from "@/components/Modal";
@@ -29,6 +34,7 @@ export default function EnvironmentsBoard({ project, environments, reload }) {
 
   const [claiming, setClaiming] = useState(null); // environment being claimed
   const [note, setNote] = useState("");
+  const [hours, setHours] = useState(DEFAULT_CLAIM_HOURS);
   const [busyId, setBusyId] = useState(null);
 
   const myUserId = session?.user?.id;
@@ -60,7 +66,10 @@ export default function EnvironmentsBoard({ project, environments, reload }) {
   async function claim() {
     const env = claiming;
     try {
-      await send(env, "POST", { note: note.trim() });
+      await send(env, "POST", {
+        note: note.trim(),
+        expiresInHours: hours === "none" ? null : Number(hours),
+      });
       toast.success(`Claimed ${env.name}.`);
       setClaiming(null);
       setNote("");
@@ -71,6 +80,18 @@ export default function EnvironmentsBoard({ project, environments, reload }) {
       await reload?.();
       setClaiming(null);
       setNote("");
+    }
+  }
+
+  async function extend(env) {
+    try {
+      await send(env, "POST", {
+        note: env.claim?.note ?? "",
+        expiresInHours: DEFAULT_CLAIM_HOURS,
+      });
+      toast.success(`Extended ${env.name}.`);
+    } catch (e) {
+      toast.error(e.message);
     }
   }
 
@@ -148,6 +169,22 @@ export default function EnvironmentsBoard({ project, environments, reload }) {
                           claimed this {timeAgo(claim.claimedAt)}
                         </span>
                       </p>
+                      <p className="mt-0.5 text-muted">
+                        {claim.expiresAt ? (
+                          <span
+                            className={
+                              new Date(claim.expiresAt).getTime() - Date.now() <
+                              3_600_000
+                                ? "text-attention"
+                                : undefined
+                            }
+                          >
+                            {describeRemaining(claim.expiresAt)}
+                          </span>
+                        ) : (
+                          "No expiry"
+                        )}
+                      </p>
                       {claim.note && (
                         <p className="mt-0.5 break-words text-muted">“{claim.note}”</p>
                       )}
@@ -166,18 +203,29 @@ export default function EnvironmentsBoard({ project, environments, reload }) {
                     onClick={() => {
                       setClaiming(env);
                       setNote("");
+                      setHours(DEFAULT_CLAIM_HOURS);
                     }}
                     className="btn-primary px-2.5 py-1 text-xs"
                   >
                     Claim
                   </button>
                 ) : mine || canForceRelease ? (
-                  <button
-                    onClick={() => release(env)}
-                    className="btn px-2.5 py-1 text-xs"
-                  >
-                    {mine ? "Release" : "Force release"}
-                  </button>
+                  <>
+                    <button
+                      onClick={() => release(env)}
+                      className="btn px-2.5 py-1 text-xs"
+                    >
+                      {mine ? "Release" : "Force release"}
+                    </button>
+                    {mine && claim.expiresAt && (
+                      <button
+                        onClick={() => extend(env)}
+                        className="btn px-2.5 py-1 text-xs"
+                      >
+                        Extend
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <span className="text-xs text-muted">
                     Only {claim.login} or an admin can release this.
@@ -207,6 +255,27 @@ export default function EnvironmentsBoard({ project, environments, reload }) {
             onChange={(e) => setNote(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && claim()}
           />
+
+          <div className="space-y-1">
+            <label className="block text-xs font-semibold text-muted">
+              Hold for
+            </label>
+            <select
+              className="gh-input w-full px-2.5 py-1.5 text-sm"
+              value={hours ?? "none"}
+              onChange={(e) => setHours(e.target.value)}
+            >
+              {CLAIM_DURATIONS.map((d) => (
+                <option key={d.label} value={d.hours ?? "none"}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted">
+              The environment frees itself when this elapses. You can extend or
+              release it at any time.
+            </p>
+          </div>
           <div className="flex items-center justify-end gap-2">
             <button
               onClick={() => setClaiming(null)}

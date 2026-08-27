@@ -15,6 +15,8 @@
  *   node scripts/db-ops.cjs rename-table <from> <to>
  *   node scripts/db-ops.cjs ensure-app-role <role> <password>
  *   node scripts/db-ops.cjs verify-app-role
+ *   node scripts/db-ops.cjs preflight
+ *   node scripts/db-ops.cjs verify-schema
  *
  * Requires DATABASE_URL. `seed-admin` also accepts SEED_LOGIN as a fallback.
  */
@@ -225,6 +227,114 @@ async function verifyAppRole() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Schema shape checks
+//
+// `drizzle-kit push` cannot be trusted to report what it did. Without --force
+// it prompts, and with stdin closed it takes the default and EXITS 0 WITHOUT
+// APPLYING ANYTHING — a schema change that silently doesn't happen, reported as
+// success. That shipped a release whose code selected a column the database
+// didn't have.
+//
+// So the guard moved out of drizzle: `preflight` decides whether the change is
+// destructive (and refuses unless ALLOW_DATA_LOSS is set), push always runs
+// with --force so it actually applies, and `verify-schema` asserts afterwards
+// that the database really does match. Trust the outcome, not the exit code.
+// ---------------------------------------------------------------------------
+
+/** Tables and columns as declared in lib/db/schema.js. */
+async function expectedShape() {
+  const { pathToFileURL } = require("node:url");
+  const { resolve } = require("node:path");
+  const schemaUrl = pathToFileURL(resolve(__dirname, "../lib/db/schema.js")).href;
+
+  const [schema, pgCore] = await Promise.all([
+    import(schemaUrl),
+    import("drizzle-orm/pg-core"),
+  ]);
+  const { getTableConfig } = pgCore;
+
+  const tables = new Map();
+  for (const value of Object.values(schema)) {
+    let cfg;
+    try {
+      cfg = getTableConfig(value);
+    } catch {
+      continue; // not a pgTable export
+    }
+    tables.set(cfg.name, new Set(cfg.columns.map((c) => c.name)));
+  }
+  return tables;
+}
+
+/** Tables and columns actually present in the database. */
+async function liveShape() {
+  const { rows } = await pool.query(
+    `select table_name, column_name
+       from information_schema.columns
+      where table_schema = 'public'`,
+  );
+  const tables = new Map();
+  for (const r of rows) {
+    if (!tables.has(r.table_name)) tables.set(r.table_name, new Set());
+    tables.get(r.table_name).add(r.column_name);
+  }
+  return tables;
+}
+
+function diffShapes(expected, live) {
+  const additive = [];
+  const destructive = [];
+
+  for (const [table, cols] of expected) {
+    if (!live.has(table)) {
+      additive.push(`create table ${table}`);
+      continue;
+    }
+    for (const col of cols) {
+      if (!live.get(table).has(col)) additive.push(`add ${table}.${col}`);
+    }
+  }
+  for (const [table, cols] of live) {
+    if (!expected.has(table)) {
+      destructive.push(`DROP TABLE ${table}`);
+      continue;
+    }
+    for (const col of cols) {
+      if (!expected.get(table).has(col)) destructive.push(`DROP ${table}.${col}`);
+    }
+  }
+  return { additive, destructive };
+}
+
+/** Refuse to push a destructive change unless it was asked for explicitly. */
+async function preflight() {
+  const { additive, destructive } = diffShapes(await expectedShape(), await liveShape());
+
+  for (const change of additive) console.log(`PREFLIGHT additive: ${change}`);
+  for (const change of destructive) console.log(`PREFLIGHT destructive: ${change}`);
+  if (additive.length === 0 && destructive.length === 0) {
+    console.log("PREFLIGHT: no schema changes");
+  }
+
+  if (destructive.length > 0 && !process.env.ALLOW_DATA_LOSS) {
+    throw new Error(
+      `${destructive.length} destructive change(s) would run. Set ALLOW_DATA_LOSS=true for this deployment only if that is intended.`,
+    );
+  }
+}
+
+/** Assert the database matches the schema. Fails if push silently did nothing. */
+async function verifySchema() {
+  const { additive } = diffShapes(await expectedShape(), await liveShape());
+  if (additive.length > 0) {
+    throw new Error(
+      `schema was NOT applied: still missing ${additive.join(", ")}`,
+    );
+  }
+  console.log("VERIFY SCHEMA: database matches schema.js");
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 const commands = {
   tables,
@@ -232,6 +342,8 @@ const commands = {
   "rename-table": () => renameTable(rest[0], rest[1]),
   "ensure-app-role": () => ensureAppRole(rest[0], rest[1]),
   "verify-app-role": verifyAppRole,
+  preflight,
+  "verify-schema": verifySchema,
 };
 const run = commands[cmd];
 
