@@ -16,6 +16,9 @@
     },
     "customDomain": {
       "value": ""
+    },
+    "minReplicas": {
+      "value": 0
     }
   }
 }

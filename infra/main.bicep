@@ -69,6 +69,13 @@ param customDomain string = ''
 @description('Image for the schema-migration job (Dockerfile.migrate). Leave empty until it has been built; the job is only created once this is set.')
 param migrateImage string = ''
 
+@description('Password for the least-privilege application database role. Create the role first with: db-ops.cjs ensure-app-role. Leave empty to fall back to the admin account (not recommended).')
+@secure()
+param appDbPassword string = ''
+
+@description('Auto-approve destructive schema statements on the next migration run. Leave false; set true for ONE deployment when a change intentionally drops or narrows a column.')
+param allowSchemaDataLoss bool = false
+
 @description('Cron schedule (UTC) for the database auto-start job. Default: hourly on the hour, 05:00-17:00 UTC, Mon-Fri. Set to empty to disable the job.')
 param dbAutoStartCron string = '0 5-17 * * 1-5'
 
@@ -208,7 +215,17 @@ resource env 'Microsoft.App/managedEnvironments@2025-07-01' = {
 // ---------------------------------------------------------------------------
 // Container App
 // ---------------------------------------------------------------------------
-var databaseUrl = 'postgres://${pgAdminUser}:${pgAdminPassword}@${postgres.properties.fullyQualifiedDomainName}:5432/${databaseName}?sslmode=require'
+// Migrations need DDL, so they keep the admin account.
+var adminDatabaseUrl = 'postgres://${pgAdminUser}:${pgAdminPassword}@${postgres.properties.fullyQualifiedDomainName}:5432/${databaseName}?sslmode=require'
+
+// The app gets a role that can only read and write rows. The Postgres firewall
+// must allow all Azure services (Container Apps consumption has no stable
+// egress IP), so the credential is the main control — it should not be one that
+// can drop the database.
+var appDbUser = '${namePrefix}_app'
+var databaseUrl = empty(appDbPassword)
+  ? adminDatabaseUrl
+  : 'postgres://${appDbUser}:${appDbPassword}@${postgres.properties.fullyQualifiedDomainName}:5432/${databaseName}?sslmode=require'
 var appUrl = 'https://${containerAppName}.${env.properties.defaultDomain}'
 
 // Canonical public URL. NextAuth builds its OAuth redirect/callback URLs from
@@ -442,7 +459,7 @@ resource migrateJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(migrateImage)) 
       secrets: [
         {
           name: 'database-url'
-          value: databaseUrl
+          value: adminDatabaseUrl
         }
       ]
     }
@@ -459,6 +476,11 @@ resource migrateJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(migrateImage)) 
             {
               name: 'DATABASE_URL'
               secretRef: 'database-url'
+            }
+            {
+              // Empty string leaves --force off; see Dockerfile.migrate.
+              name: 'ALLOW_DATA_LOSS'
+              value: allowSchemaDataLoss ? 'true' : ''
             }
           ]
         }

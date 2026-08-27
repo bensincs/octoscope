@@ -13,6 +13,8 @@
  *   node scripts/db-ops.cjs tables
  *   node scripts/db-ops.cjs seed-admin <github-login>
  *   node scripts/db-ops.cjs rename-table <from> <to>
+ *   node scripts/db-ops.cjs ensure-app-role <role> <password>
+ *   node scripts/db-ops.cjs verify-app-role
  *
  * Requires DATABASE_URL. `seed-admin` also accepts SEED_LOGIN as a fallback.
  */
@@ -20,7 +22,12 @@ const { Pool } = require("pg");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  // Verify the server certificate rather than merely encrypting. See the note
+  // in lib/db/index.js. This job runs before the app rolls out, so it doubles
+  // as the canary for the whole deployment: if verification fails here, the
+  // deploy stops instead of shipping an app that cannot reach its database.
+  ssl: { rejectUnauthorized: true },
+  connectionTimeoutMillis: 10_000,
 });
 
 async function tables() {
@@ -120,11 +127,111 @@ async function renameTable(from, to) {
   }
 }
 
+/**
+ * Create or update a least-privilege role for the application.
+ *
+ * The app previously connected as the SERVER ADMIN. Because the Postgres
+ * firewall has to allow all Azure services (Container Apps consumption has no
+ * stable egress IP), that credential is effectively the only thing protecting
+ * the database — and it could drop the whole thing. This role can read and
+ * write rows and nothing else: no DDL, no role management, no superuser.
+ *
+ * Migrations keep using the admin account, since they need DDL.
+ */
+async function ensureAppRole(role, password) {
+  const name = String(role || "");
+  const pw = String(password || "");
+
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) {
+    throw new Error("role must be a lowercase identifier");
+  }
+  // Role names and passwords cannot be bound as query parameters, so they have
+  // to be interpolated. Requiring an alphanumeric password (the deploy script
+  // generates hex) removes any escaping question rather than relying on
+  // getting quoting right.
+  if (!/^[A-Za-z0-9]{24,}$/.test(pw)) {
+    throw new Error("app password must be at least 24 alphanumeric characters");
+  }
+
+  const { rows } = await pool.query("select current_database() as db");
+  const dbName = rows[0].db;
+
+  const exists = await pool.query("select 1 from pg_roles where rolname = $1", [name]);
+  if (exists.rowCount === 0) {
+    await pool.query(`create role ${name} login password '${pw}'`);
+    console.log(`ROLE: created ${name}`);
+  } else {
+    await pool.query(`alter role ${name} with login password '${pw}'`);
+    console.log(`ROLE: updated password for ${name}`);
+  }
+
+  await pool.query(`grant connect on database "${dbName}" to ${name}`);
+  await pool.query(`grant usage on schema public to ${name}`);
+  await pool.query(
+    `grant select, insert, update, delete on all tables in schema public to ${name}`,
+  );
+  await pool.query(
+    `grant usage, select on all sequences in schema public to ${name}`,
+  );
+  // Without default privileges, every future migration would create a table the
+  // app cannot touch, and the breakage would only show up at runtime.
+  await pool.query(
+    `alter default privileges in schema public grant select, insert, update, delete on tables to ${name}`,
+  );
+  await pool.query(
+    `alter default privileges in schema public grant usage, select on sequences to ${name}`,
+  );
+
+  console.log(`ROLE: ${name} has DML on public only (no DDL, no superuser)`);
+}
+
+/**
+ * Prove the connection in DATABASE_URL has exactly the access it should.
+ *
+ * `select 1` (what /api/health does) passes with no table grants at all, so it
+ * cannot tell you whether the application role actually works. This reads real
+ * tables and then deliberately attempts DDL, which must FAIL for a correctly
+ * restricted role.
+ */
+async function verifyAppRole() {
+  const who = await pool.query("select current_user as u, current_database() as d");
+  const { u: user, d: database } = who.rows[0];
+
+  const counts = {};
+  for (const table of ["projects", "project_environments", "pull_requests", "adrs"]) {
+    const r = await pool.query(`select count(*)::int as n from ${table}`);
+    counts[table] = r.rows[0].n;
+  }
+
+  let ddl = "denied";
+  try {
+    await pool.query("create table _octoscope_probe (i int)");
+    await pool.query("drop table _octoscope_probe");
+    ddl = "ALLOWED";
+  } catch (e) {
+    ddl = `denied (${e.code})`;
+  }
+
+  console.log(
+    `VERIFY user=${user} db=${database} reads=${JSON.stringify(counts)} ddl=${ddl}`,
+  );
+  // FAIL rather than warn. This is a security control, and a warning buried in
+  // job logs is not a check — the exit status has to carry the verdict so it
+  // can be asserted from a deploy script or CI without reading logs.
+  if (ddl === "ALLOWED") {
+    throw new Error(
+      `${user} can execute DDL — not least privilege. Check the GRANTs.`,
+    );
+  }
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 const commands = {
   tables,
   "seed-admin": () => seedAdmin(rest[0]),
   "rename-table": () => renameTable(rest[0], rest[1]),
+  "ensure-app-role": () => ensureAppRole(rest[0], rest[1]),
+  "verify-app-role": verifyAppRole,
 };
 const run = commands[cmd];
 

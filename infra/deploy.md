@@ -583,3 +583,78 @@ The site stopped responding entirely instead of returning a fast 503.
 `lib/db/index.js` now sets `connectionTimeoutMillis`, `statement_timeout` and
 `query_timeout`. An unreachable database is an *expected* state here, so it has
 to degrade cleanly.
+
+## Hardening notes
+
+### Least-privilege database role
+
+The app connects as **`octoscope_app`**, not the server admin. Create or rotate
+it with the migrator image before deploying:
+
+```sh
+APP_DB_PW=$(openssl rand -hex 24)   # alphanumeric on purpose, see below
+# run as a one-off job with the ADMIN DATABASE_URL:
+--command "node" --args "scripts/db-ops.cjs" "ensure-app-role" "octoscope_app" "$APP_DB_PW"
+```
+
+Then pass `-p appDbPassword="$APP_DB_PW"` on the Bicep deploy. Leave it empty
+and the app falls back to the admin account, which works but gives up the
+protection.
+
+The role has `SELECT/INSERT/UPDATE/DELETE` on `public` and nothing else — no
+DDL, no role management. Default privileges are granted too, so tables created
+by future migrations are reachable without re-running anything. Migrations keep
+using the admin account, since they need DDL.
+
+> Role names and passwords cannot be bound as query parameters, so
+> `ensure-app-role` requires an alphanumeric password (hex from `openssl`). That
+> removes the escaping question entirely rather than relying on getting quoting
+> right.
+
+Verify at any time — this **fails** if the role can run DDL, so it can be
+asserted from a script without reading logs:
+
+```sh
+--command "node" --args "scripts/db-ops.cjs" "verify-app-role"
+```
+
+### What is NOT fixed: the Postgres firewall
+
+The server still carries the `0.0.0.0` "allow all Azure services" rule, which
+permits connections from **any Azure subscription, including other customers'**.
+Credentials are the only control, which is why the app no longer uses an admin
+one.
+
+This cannot be narrowed as things stand. Container Apps **Consumption-only**
+environments have no stable outbound IP (Microsoft documents that outbound IPs
+"might change over time"), so there is no address to allow-list. A stable egress
+IP requires a **workload-profiles** environment with a custom VNet and a NAT
+Gateway — and **a VNet cannot be added to an existing environment**. Reaching
+Postgres over a private endpoint has the same prerequisite.
+
+Closing this properly therefore means recreating the Container Apps environment:
+new default domain, re-pointed CNAME, reissued managed certificate, and
+downtime. The custom domain makes the FQDN churn invisible to users, so it is
+doable — but it is a migration, not a setting.
+
+### TLS verification
+
+`lib/db/index.js` and `scripts/db-ops.cjs` set `rejectUnauthorized: true`. The
+previous `false` gave encryption without authentication: unreadable in transit,
+but nothing proved the far end was really our database. Azure's chain roots in
+DigiCert Global Root G2, which Node already trusts, so no CA bundle is needed.
+
+The migration job runs before the app rolls out and verifies certificates
+itself, so it doubles as the deployment canary.
+
+### Schema data loss
+
+`drizzle-kit push --force` is now opt-in via `allowSchemaDataLoss`. Without it,
+a destructive change prompts, and stdin is `/dev/null` so the job fails loudly
+instead of hanging. Set `-p allowSchemaDataLoss=true` for the single deployment
+that intentionally drops or narrows a column, then set it back.
+
+### Scale to zero
+
+`minReplicas` is `0`. The app costs nothing while idle at the price of a cold
+start on the first request after a quiet period.

@@ -28,6 +28,14 @@ COPY scripts ./scripts
 # DATABASE_URL is injected as a job secret. Default: push the schema, then list
 # the resulting tables as a sanity check.
 #
+# --force is OPT-IN via ALLOW_DATA_LOSS. It auto-approves destructive
+# statements, so leaving it on permanently means a schema change that drops or
+# narrows a column silently discards data on the next deploy. Without it,
+# drizzle-kit prompts for confirmation; stdin is /dev/null so that prompt fails
+# the job loudly instead of hanging until the replica timeout.
+#
+# --verbose logs every statement, so Log Analytics keeps a record of what ran.
+#
 # Override for other operations, e.g. seeding the first super admin:
 #   --command "node" --args "scripts/db-ops.cjs" "seed-admin" "<github-login>"
-CMD ["sh", "-c", "npx drizzle-kit push --force && node scripts/db-ops.cjs tables"]
+CMD ["sh", "-c", "npx drizzle-kit push --verbose ${ALLOW_DATA_LOSS:+--force} < /dev/null && node scripts/db-ops.cjs tables"]
