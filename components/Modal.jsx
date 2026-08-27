@@ -9,6 +9,19 @@ export default function Modal({ open, onClose, title, children }) {
   const dialogRef = useRef(null);
   const restoreRef = useRef(null);
 
+  // Callers pass an inline `onClose={() => setOpen(false)}`, so its identity
+  // changes on every render of the component that owns the modal. Keeping it in
+  // a ref lets the effect below depend on `open` alone.
+  //
+  // This matters: if `onClose` were a dependency, any parent re-render would
+  // tear down and re-run the effect, which re-focuses the first focusable
+  // element. For a modal whose input state lives in the parent, that means
+  // focus jumps out of the field on every keystroke.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
 
@@ -16,13 +29,18 @@ export default function Modal({ open, onClose, title, children }) {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Focus the first field (or the dialog) once mounted.
+    // Focus on open. The close button sits before `children` in the DOM, so
+    // the first focusable is always the X — fine for a confirmation, wrong for
+    // a form. A caller can mark the field it wants with `data-autofocus`.
+    // (React's `autoFocus` prop is unreliable here: the effect below would run
+    // afterwards and steal focus back.)
+    const preferred = dialogRef.current?.querySelector("[data-autofocus]");
     const focusables = getFocusable(dialogRef.current);
-    (focusables[0] ?? dialogRef.current)?.focus();
+    (preferred ?? focusables[0] ?? dialogRef.current)?.focus();
 
     function onKey(e) {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current?.();
         return;
       }
       if (e.key === "Tab") trapTab(e, dialogRef.current);
@@ -35,7 +53,7 @@ export default function Modal({ open, onClose, title, children }) {
       // Restore focus to whatever opened the modal.
       if (restoreRef.current instanceof HTMLElement) restoreRef.current.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

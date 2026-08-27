@@ -13,6 +13,7 @@ export default function GeneralPanel({ project, patch, canEdit }) {
 
   const dirty = name.trim() !== project.name && name.trim().length > 0;
 
+
   async function save() {
     setBusy(true);
     setError(null);
@@ -28,7 +29,7 @@ export default function GeneralPanel({ project, patch, canEdit }) {
   }
 
   return (
-    <Panel title="General" blurb="The display name for this saved audit configuration.">
+    <Panel title="General" blurb="The display name for this project.">
       <fieldset disabled={!canEdit} className="max-w-md space-y-2">
         <label className="block text-xs font-semibold text-muted">Project name</label>
         <input
@@ -50,6 +51,7 @@ export default function GeneralPanel({ project, patch, canEdit }) {
           </div>
         )}
       </fieldset>
+
     </Panel>
   );
 }

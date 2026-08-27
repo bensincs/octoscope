@@ -1,6 +1,6 @@
 "use client";
 // Platform settings — a super-admin-only surface reached from the "Settings"
-// tab next to "Audit projects". A GitHub-style left section nav drives the
+// tab next to "Projects". A GitHub-style left section nav drives the
 // visible panel; for now Super admins is the only section, but it's structured
 // to grow. Guarded client-side via useSuperAdmin (the /api/admin/* routes
 // enforce access server-side regardless).
@@ -35,7 +35,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setBreadcrumb([]);
     setTabs([
-      { label: "Audit projects", onClick: () => router.push("/") },
+      { label: "Projects", onClick: () => router.push("/") },
       { label: "Settings", active: true },
     ]);
     return () => setTabs([]);

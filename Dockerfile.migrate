@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# Schema migrator — runs `drizzle-kit push` from INSIDE Azure.
+#
+# Why this exists: the app image (see Dockerfile) is a Next.js standalone build
+# with no dev dependencies, so it cannot run drizzle-kit. Pushing from a laptop
+# instead requires opening a Postgres firewall rule for your IP *and* outbound
+# access on :5432, which corporate networks commonly block. Running the push as
+# a Container Apps job in the same environment avoids both problems — the app
+# environment already reaches Postgres via the AllowAllAzureServices rule.
+#
+# Build + run:  see infra/deploy.md, "Applying the database schema".
+# ---------------------------------------------------------------------------
+FROM node:20-alpine
+
+WORKDIR /app
+
+# drizzle-kit is a devDependency, so this image must NOT set NODE_ENV=production.
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY drizzle.config.js ./
+COPY lib ./lib
+COPY scripts ./scripts
+
+# DATABASE_URL is injected as a job secret. Default: push the schema, then list
+# the resulting tables as a sanity check.
+#
+# Override for other operations, e.g. seeding the first super admin:
+#   --command "node" --args "scripts/db-ops.cjs" "seed-admin" "<github-login>"
+CMD ["sh", "-c", "npx drizzle-kit push --force && node scripts/db-ops.cjs tables"]

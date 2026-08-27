@@ -56,7 +56,7 @@ export default function ReposPanel({
         )
       }
     >
-      <ListBox empty="No repositories yet. Add at least one to run audits.">
+      <ListBox empty="No repositories yet. Add at least one to scan issues.">
         {repos.map((r) => (
           <ResourceRow
             key={r.id}

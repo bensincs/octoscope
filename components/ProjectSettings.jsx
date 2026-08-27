@@ -1,12 +1,13 @@
 "use client";
-// GitHub-style settings surface for an existing audit project. A grouped left
+// GitHub-style settings surface for an existing project. A grouped left
 // section nav drives the visible panel:
-//   General      → General, Rulebook
-//   Connections  → Repositories, Boards
+//   General      → General, Welcome, Environments, Rulebook
+//   Connections  → Repositories, Boards, Decision records
 //   Collaborators→ Members (user access control)
 //   (Danger zone, owner-only, sits on its own at the bottom)
 // What a member can change depends on their role (viewer/editor/admin/owner).
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   GearIcon,
   BookIcon,
@@ -14,14 +15,21 @@ import {
   ProjectIcon,
   PeopleIcon,
   AlertIcon,
+  ServerIcon,
+  BookmarkIcon,
+  FileIcon,
 } from "@primer/octicons-react";
 import { useOwners } from "@/components/projectForms";
+import { meetsRole } from "@/lib/access";
 import { NavButton, RoleBadge } from "./settings/primitives";
 import GeneralPanel from "./settings/GeneralPanel";
 import RulebookPanel from "./settings/RulebookPanel";
 import ReposPanel from "./settings/ReposPanel";
 import BoardsPanel from "./settings/BoardsPanel";
 import CollaboratorsPanel from "./settings/CollaboratorsPanel";
+import EnvironmentsPanel from "./settings/EnvironmentsPanel";
+import WelcomePanel from "./settings/WelcomePanel";
+import AdrPanel from "./settings/AdrPanel";
 import DangerPanel from "./settings/DangerPanel";
 
 const NAV = [
@@ -29,6 +37,8 @@ const NAV = [
     heading: "General",
     items: [
       { key: "general", label: "General", icon: <GearIcon size={16} /> },
+      { key: "welcome", label: "Welcome", icon: <BookmarkIcon size={16} /> },
+      { key: "environments", label: "Environments", icon: <ServerIcon size={16} /> },
       { key: "rulebook", label: "Rulebook", icon: <BookIcon size={16} /> },
     ],
   },
@@ -37,6 +47,7 @@ const NAV = [
     items: [
       { key: "repos", label: "Repositories", icon: <RepoIcon size={16} /> },
       { key: "boards", label: "Boards", icon: <ProjectIcon size={16} /> },
+      { key: "adrs", label: "Decision records", icon: <FileIcon size={16} /> },
     ],
   },
   {
@@ -45,16 +56,21 @@ const NAV = [
   },
 ];
 
-const ROLE_RANK = { viewer: 1, editor: 2, admin: 3, owner: 4 };
-
 export default function ProjectSettings({
   project,
   reload,
   onChanged,
-  onBackToAudit,
+  onBackToIssues,
   onDeleted,
 }) {
-  const [section, setSection] = useState("general");
+  // ?section=rulebook lets other pages deep-link straight to a panel instead of
+  // dropping the user on General and making them hunt for it.
+  const searchParams = useSearchParams();
+  const requested = searchParams.get("section");
+  const [section, setSection] = useState(() => requested || "general");
+  useEffect(() => {
+    if (requested) setSection(requested);
+  }, [requested]);
 
   // Local working copies so add/remove feels instant; seeded from the loaded
   // project and re-seeded whenever it changes (e.g. after a reload()).
@@ -67,8 +83,8 @@ export default function ProjectSettings({
 
   // The caller's role on this project gates what they can change.
   const role = project.viewerRole || "owner";
-  const canEdit = ROLE_RANK[role] >= ROLE_RANK.editor;
-  const canAdmin = ROLE_RANK[role] >= ROLE_RANK.admin;
+  const canEdit = meetsRole(role, "editor");
+  const canAdmin = meetsRole(role, "admin");
   const isOwner = role === "owner";
 
   // Persist a partial patch ({name} or {config}) and refresh the parent.
@@ -141,7 +157,13 @@ export default function ProjectSettings({
         </nav>
 
         <div className="min-w-0">
-          {!canEdit && section !== "collaborators" && (
+          {section === "welcome" && !canAdmin && (
+            <div className="mb-3 rounded-md border border-border bg-subtle px-3 py-2 text-xs text-muted">
+              You have <span className="font-semibold text-fg">{role}</span> access — the
+              welcome page can only be edited by project admins.
+            </div>
+          )}
+          {!canEdit && section !== "collaborators" && section !== "welcome" && (
             <div className="mb-3 rounded-md border border-border bg-subtle px-3 py-2 text-xs text-muted">
               You have <span className="font-semibold text-fg">{role}</span> access — these
               settings are read-only.
@@ -149,6 +171,9 @@ export default function ProjectSettings({
           )}
           {section === "general" && (
             <GeneralPanel project={project} patch={patch} canEdit={canEdit} />
+          )}
+          {section === "welcome" && (
+            <WelcomePanel project={project} patch={patch} canAdmin={canAdmin} />
           )}
           {section === "rulebook" && (
             <RulebookPanel project={project} patch={patch} canEdit={canEdit} />
@@ -170,6 +195,16 @@ export default function ProjectSettings({
               boards={boards}
               setBoards={setBoards}
               onChanged={onChanged}
+              canEdit={canEdit}
+            />
+          )}
+          {section === "adrs" && (
+            <AdrPanel project={project} patch={patch} canEdit={canEdit} />
+          )}
+          {section === "environments" && (
+            <EnvironmentsPanel
+              project={project}
+              onChanged={reload}
               canEdit={canEdit}
             />
           )}

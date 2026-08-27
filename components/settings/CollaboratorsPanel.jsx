@@ -78,7 +78,7 @@ export default function CollaboratorsPanel({ project, canAdmin }) {
   return (
     <Panel
       title="Members"
-      blurb="People who can access this audit project. The owner always keeps full access."
+      blurb="People who can access this project. The owner always keeps full access."
       action={
         canAdmin && (
           <button
@@ -111,7 +111,7 @@ export default function CollaboratorsPanel({ project, canAdmin }) {
       {canAdmin && (
         <p className="mt-3 text-[11px] text-muted">
           Admins manage members; editors change the rulebook, repos and boards;
-          viewers can run audits. Invited users get access on their next GitHub
+          viewers can refresh issues. Invited users get access on their next GitHub
           sign-in.
         </p>
       )}

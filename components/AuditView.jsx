@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { TYPES as DEFAULT_TYPES, RULES_BY_ID as DEFAULT_RULES_BY_ID } from "@/lib/hierarchy";
 import { toMarkdown, toCSV, downloadFile } from "@/lib/report";
-import RulesPanel from "@/components/RulesPanel";
 import IssueTree from "@/components/IssueTree";
 
 function StatCard({ label, value, tone = "default" }) {
@@ -221,20 +220,31 @@ export default function AuditView({
         <StatCard label="Warnings" value={stats.warnings} tone="attention" />
       </div>
 
-      {/* Rulebook */}
-      <RulesPanel
-        rules={rules}
-        byRule={stats.byRule}
-        projectActive={result.projectActive}
-        activeRule={ruleFilter}
-        onSelectRule={setRuleFilter}
-      />
 
       {/* Tree toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Legend byType={stats.byType} types={types} />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <ExportMenu result={result} tree={tree} />
+          {/* The rulebook now has its own tab, but filtering by a violated rule
+              is about THESE results rather than configuration, so it stays here
+              as a compact control instead of disappearing with the old panel.
+              Only rules that actually fired are offered. */}
+          <select
+            value={ruleFilter ?? ""}
+            onChange={(e) => setRuleFilter(e.target.value || null)}
+            aria-label="Filter by rule"
+            className="gh-input px-2 py-1 text-sm"
+          >
+            <option value="">All rules</option>
+            {rules
+              .filter((r) => (stats.byRule?.[r.id] ?? 0) > 0)
+              .map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.title} ({stats.byRule[r.id]})
+                </option>
+              ))}
+          </select>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-fg">
             <input
               type="checkbox"

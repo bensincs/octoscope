@@ -34,7 +34,7 @@ export default function SuperAdminsPanel() {
   async function remove(member) {
     const ok = await confirm({
       title: "Revoke super admin?",
-      body: `${member.login || "This person"} will lose owner-level access to every audit project.`,
+      body: `${member.login || "This person"} will lose owner-level access to every project.`,
       confirmLabel: "Revoke access",
     });
     if (!ok) return;
@@ -56,7 +56,7 @@ export default function SuperAdminsPanel() {
   return (
     <Panel
       title="Super admins"
-      blurb="Platform operators with owner-level access to every audit project — including ones they don't own or collaborate on. Grant this sparingly."
+      blurb="Platform operators with owner-level access to every project — including ones they don't own or collaborate on. Grant this sparingly."
       action={
         <button
           onClick={() => setAdding(true)}

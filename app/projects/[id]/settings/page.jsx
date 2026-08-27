@@ -12,7 +12,7 @@ export default function ProjectSettingsPage() {
       project={project}
       reload={reload}
       onChanged={reload}
-      onBackToAudit={() => router.push(`/projects/${projectId}`)}
+      onBackToIssues={() => router.push(`/projects/${projectId}`)}
       onDeleted={() => router.push("/")}
     />
   );

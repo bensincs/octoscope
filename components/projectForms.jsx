@@ -1,5 +1,5 @@
 "use client";
-// Shared building blocks for working with a saved audit project's repos and
+// Shared building blocks for working with a saved project's repos and
 // boards. Used by the project settings page (ProjectSettings).
 import { useEffect, useState } from "react";
 import { XIcon } from "@primer/octicons-react";

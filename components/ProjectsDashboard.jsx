@@ -36,10 +36,10 @@ export default function ProjectsDashboard() {
   }, [load]);
 
   // This is the home surface: clear any project breadcrumb and show the tabs.
-  // Super admins also get a Settings tab next to Audit projects.
+  // Super admins also get a Settings tab next to Projects.
   useEffect(() => {
     setBreadcrumb([]);
-    const tabs = [{ label: "Audit projects", active: true }];
+    const tabs = [{ label: "Projects", active: true }];
     if (superAdmin) {
       tabs.push({ label: "Settings", onClick: () => router.push("/settings") });
     }
@@ -82,7 +82,7 @@ export default function ProjectsDashboard() {
         ) : projects.length === 0 ? (
           !creating && (
             <div className="gh-card grid place-items-center gap-3 px-6 py-16 text-center text-sm text-muted">
-              <p>No audit projects yet.</p>
+              <p>No projects yet.</p>
               <button
                 onClick={() => setCreating(true)}
                 className="btn-primary px-3 py-1.5 text-sm"
@@ -156,7 +156,7 @@ function CreateProjectForm({ onCancel, onCreated }) {
 
   return (
     <div className="gh-card p-5">
-      <h2 className="text-sm font-semibold text-fg">New audit project</h2>
+      <h2 className="text-sm font-semibold text-fg">New project</h2>
       <p className="mt-0.5 text-xs text-muted">
         Just name it to start — you'll configure the rulebook, repositories and
         boards in settings next.

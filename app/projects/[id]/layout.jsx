@@ -5,8 +5,19 @@ import { ProjectProvider } from "@/components/ProjectContext";
 import { useNav } from "@/components/NavContext";
 import { Spinner } from "@/components/projectForms";
 
-// Loads the project once for both the audit and settings routes, publishes the
-// breadcrumb + sub-nav tabs, and shares the project via context.
+// Loads the project once for every child route, publishes the breadcrumb +
+// sub-nav tabs, and shares the project via context.
+//
+// Two tabs are conditional and are hidden entirely rather than disabled:
+//   Welcome       — only once an admin has written a welcome page
+//   Issues        — only once at least one repository is connected
+//   Pull requests — only once at least one repository is connected
+//   Decisions     — only once an ADR repo + folder are configured
+//   Environments  — only once at least one environment is configured
+//
+// Rulebook is always present: it describes configuration, which exists whether
+// or not anything has been connected or scanned.
+// A project with neither looks exactly as it did before the feature existed.
 export default function ProjectLayout({ children, params }) {
   const { id } = use(params);
   const router = useRouter();
@@ -35,31 +46,111 @@ export default function ProjectLayout({ children, params }) {
     reload();
   }, [reload]);
 
-  const onSettings = pathname.endsWith("/settings");
+  // "/projects/:id/issues" -> "issues"; the bare "/projects/:id" -> "" (it only
+  // ever redirects, so it never needs to match a tab).
+  const section = pathname.split("/")[3] ?? "";
+
+  const hasWelcome = !!project?.welcomeMarkdown?.trim();
+  const hasEnvironments = (project?.environments?.length ?? 0) > 0;
+  const hasRepos = (project?.repos?.length ?? 0) > 0;
+  const hasAdrs = !!project?.adrRepoId && !!project?.adrPath;
 
   useEffect(() => {
+    const go = (path) => () => router.push(`/projects/${id}${path}`);
+
     const crumbs = [{ label: "Projects", onClick: () => router.push("/") }];
     if (project) {
       crumbs.push({
         label: project.name,
-        onClick: onSettings ? () => router.push(`/projects/${id}`) : undefined,
+        onClick: section ? go("") : undefined,
       });
-      if (onSettings) crumbs.push({ label: "Settings" });
+      const crumbLabel = {
+        welcome: "Welcome",
+        issues: "Issues",
+        rulebook: "Rulebook",
+        "pull-requests": "Pull requests",
+        adrs: "Decisions",
+        environments: "Environments",
+        settings: "Settings",
+      }[section];
+      if (crumbLabel) crumbs.push({ label: crumbLabel });
     }
     setBreadcrumb(crumbs);
+
     setTabs([
-      { label: "Audit", active: !onSettings, onClick: () => router.push(`/projects/${id}`) },
+      ...(hasWelcome
+        ? [
+            {
+              label: "Welcome",
+              active: section === "welcome",
+              onClick: go("/welcome"),
+            },
+          ]
+        : []),
+      ...(hasRepos
+        ? [
+            {
+              label: "Issues",
+              active: section === "issues",
+              onClick: go("/issues"),
+            },
+          ]
+        : []),
+      {
+        label: "Rulebook",
+        active: section === "rulebook",
+        onClick: go("/rulebook"),
+      },
+      ...(hasRepos
+        ? [
+            {
+              label: "Pull requests",
+              active: section === "pull-requests",
+              onClick: go("/pull-requests"),
+            },
+          ]
+        : []),
+      ...(hasAdrs
+        ? [
+            {
+              label: "Decisions",
+              active: section === "adrs",
+              onClick: go("/adrs"),
+            },
+          ]
+        : []),
+      ...(hasEnvironments
+        ? [
+            {
+              label: "Environments",
+              active: section === "environments",
+              onClick: go("/environments"),
+            },
+          ]
+        : []),
       {
         label: "Settings",
-        active: onSettings,
-        onClick: () => router.push(`/projects/${id}/settings`),
+        active: section === "settings",
+        onClick: go("/settings"),
       },
     ]);
+
     return () => {
       setBreadcrumb([]);
       setTabs([]);
     };
-  }, [project, onSettings, id, router, setBreadcrumb, setTabs]);
+  }, [
+    project,
+    section,
+    hasWelcome,
+    hasEnvironments,
+    hasRepos,
+    hasAdrs,
+    id,
+    router,
+    setBreadcrumb,
+    setTabs,
+  ]);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6">

@@ -10,10 +10,17 @@ boards.
 
 ## Features
 
-- **Audit projects** — saved configurations grouping repos + boards under one
+- **Projects** — saved configurations grouping repos + boards under one
   rulebook (issue-type hierarchy, label allow-lists, type aliases).
 - **Configurable hierarchy** — e.g. `Epic › Feature › User Story › Task/Bug`;
   validation flags mis-nested or mis-typed issues.
+- **Environments** — per-project named environments (e.g. `staging`) that
+  members claim to signal they're using them. Claims are exclusive: one holder
+  at a time, released by that holder or a project admin. The Environments tab
+  only appears once environments are configured.
+- **Welcome page** — optional markdown written by project admins and shown to
+  everyone who opens the project. The Welcome tab stays hidden until it's set,
+  and becomes the landing tab once it is.
 - **GitHub OAuth login** with per-resource **encrypted PATs** (AES-256-GCM) — each
   repo/board carries its own token so access is scoped per resource.
 - **Collaborators** — share a project with `viewer` / `editor` / `admin` roles
@@ -72,13 +79,22 @@ required variables, including `AUTH_SECRET` and `PAT_ENCRYPTION_KEY`.
 - `lib/` — domain logic: `hierarchy` (rulebook), `report` (audit), `crypto`
   (PAT encryption), `access` (roles), `github` (read-only client)
 - `lib/db/` — Drizzle schema + data access
+- `scripts/` — operational helpers run inside Azure (`db-ops.cjs`)
 - `infra/` — Bicep IaC and deployment guide
 
 ## Deployment
 
-Octoscope runs on Azure Container Apps. The image is built in the cloud with
-`az acr build` (no local Docker needed) and the schema is applied manually via
-`db:push`. Full walkthrough in [`infra/deploy.md`](./infra/deploy.md).
+Octoscope runs on Azure Container Apps at **https://octoscope.msft.ae**, in the
+`msft.ae` tenant. The image is built in the cloud with `az acr build` (no local
+Docker needed). The custom domain and its managed TLS certificate are declared
+in Bicep, with the DNS records scripted against the `msft.ae` Azure DNS zone.
+
+The database schema is applied by a Container Apps job built from
+`Dockerfile.migrate`, because Postgres Flexible Server is only reachable from
+inside the Container Apps environment — corpnet blocks outbound `:5432`, and no
+firewall rule is opened for developer machines. Full walkthrough in
+[`infra/deploy.md`](./infra/deploy.md).
+
 
 ## Security
 
