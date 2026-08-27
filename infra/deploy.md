@@ -658,3 +658,40 @@ that intentionally drops or narrows a column, then set it back.
 
 `minReplicas` is `0`. The app costs nothing while idle at the price of a cold
 start on the first request after a quiet period.
+
+## Agent: GitHub Copilot
+
+The Agent tab is backed by GitHub Copilot. Credentials are **per user** — each
+member connects their own account under user settings — because a Copilot seat
+is licensed to a person. A project admin enabling the agent does not lend anyone
+their subscription.
+
+### The client id, and what it means
+
+`copilotClientId` is set to **Visual Studio Code's public OAuth client id**
+(`01ab8ac9400c4e429b23`), and `lib/copilot.js` sends matching VS Code editor
+headers. This was a deliberate decision by the project owner, recorded here
+rather than left implicit. What it means in practice:
+
+- Octoscope presents itself to GitHub **as Visual Studio Code** during the
+  device flow and the Copilot token exchange.
+- It talks to `api.github.com/copilot_internal` and `api.githubcopilot.com`.
+  Neither is a documented public API. They are what editors use, and GitHub
+  allowlists the token exchange to editor client ids — a probe with the GitHub
+  CLI's own token returns `403 Forbidden` with a Terms of Service notice, so
+  registering your own OAuth App is not an alternative.
+- This can break without notice, and the headers may need updating if GitHub
+  tightens validation. Every path fails closed with a readable message rather
+  than pretending the agent is healthy.
+- GitHub Models would have been the supported token-based route, but it now
+  returns `410 github_models_retirement_brownout`.
+
+To disable the agent entirely, set `-p copilotClientId=''`. The tab then reports
+Copilot as unconfigured and nothing else is affected.
+
+### A supported alternative
+
+If the above becomes untenable, the agent is written against an
+OpenAI-compatible chat-completions shape. Pointing it at Azure OpenAI in your
+own subscription needs a second provider in `lib/copilot.js` and a base-URL
+field in settings — no changes to the UI, streaming or credential storage.
