@@ -30,6 +30,7 @@ export async function PATCH(req, { params }) {
       agentBaseUrl: body.agentBaseUrl,
       agentApiKey: body.agentApiKey,
       localOnlyGithubData: body.localOnlyGithubData,
+      retentionDays: body.retentionDays,
     })
   );
 }

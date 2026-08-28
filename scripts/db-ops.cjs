@@ -17,6 +17,7 @@
  *   node scripts/db-ops.cjs verify-app-role
  *   node scripts/db-ops.cjs preflight
  *   node scripts/db-ops.cjs verify-schema
+ *   node scripts/db-ops.cjs purge-expired
  *
  * Requires DATABASE_URL. `seed-admin` also accepts SEED_LOGIN as a fallback.
  */
@@ -335,6 +336,53 @@ async function verifySchema() {
   console.log("VERIFY SCHEMA: database matches schema.js");
 }
 
+/**
+ * Delete GitHub-derived data past each project's retention period.
+ *
+ * Reads already refuse to serve expired data, so this is what makes the policy
+ * real rather than cosmetic — without it the rows would sit in the database
+ * indefinitely while the UI pretended they were gone.
+ *
+ * Projects with no retention set are skipped entirely.
+ */
+async function purgeExpired() {
+  const { rows: projects } = await pool.query(
+    "select id, name, retention_days from projects where retention_days is not null",
+  );
+
+  if (projects.length === 0) {
+    console.log("PURGE: no projects have a retention policy");
+    return;
+  }
+
+  let total = 0;
+  for (const p of projects) {
+    const cutoff = new Date(Date.now() - p.retention_days * 86400000).toISOString();
+
+    const snap = await pool.query(
+      "delete from issue_snapshots where project_id = $1 and refreshed_at < $2",
+      [p.id, cutoff],
+    );
+    const prs = await pool.query(
+      `delete from pull_requests where project_id = $1
+         and $1 in (select id from projects where prs_refreshed_at < $2)`,
+      [p.id, cutoff],
+    );
+    const adrRows = await pool.query(
+      `delete from adrs where project_id = $1
+         and $1 in (select id from projects where adrs_refreshed_at < $2)`,
+      [p.id, cutoff],
+    );
+
+    const n = (snap.rowCount ?? 0) + (prs.rowCount ?? 0) + (adrRows.rowCount ?? 0);
+    total += n;
+    if (n > 0) {
+      console.log(`PURGE: ${p.name} (${p.retention_days}d) -> removed ${n} rows`);
+    }
+  }
+  console.log(`PURGE: removed ${total} rows across ${projects.length} project(s)`);
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 const commands = {
   tables,
@@ -344,6 +392,7 @@ const commands = {
   "verify-app-role": verifyAppRole,
   preflight,
   "verify-schema": verifySchema,
+  "purge-expired": purgeExpired,
 };
 const run = commands[cmd];
 

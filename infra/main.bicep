@@ -76,6 +76,9 @@ param appDbPassword string = ''
 @description('Auto-approve destructive schema statements on the next migration run. Leave false; set true for ONE deployment when a change intentionally drops or narrows a column.')
 param allowSchemaDataLoss bool = false
 
+@description('Cron schedule (UTC) for the retention sweeper, which deletes GitHub data past each project\'s retention period. Set empty to disable.')
+param retentionCron string = '30 3 * * *'
+
 @description('Cron schedule (UTC) for the database auto-start job. Default: hourly on the hour, 05:00-17:00 UTC, Mon-Fri. Set to empty to disable the job.')
 param dbAutoStartCron string = '0 5-17 * * 1-5'
 
@@ -589,6 +592,80 @@ resource dbStartJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(dbAutoStartCron
   }
   dependsOn: [
     pgOperatorAssignment
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// Retention sweeper
+//
+// Reads already refuse to serve data past a project's retention period, so this
+// is what makes the policy real rather than cosmetic: without it the rows would
+// remain in the database indefinitely while the UI claimed they were gone.
+//
+// Runs shortly after the database is expected to be up, and only when a
+// migrate image exists to run it from.
+// ---------------------------------------------------------------------------
+resource retentionJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(migrateImage) && !empty(retentionCron)) {
+  name: '${namePrefix}-retention'
+  location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${uami.id}': {}
+    }
+  }
+  properties: {
+    environmentId: env.id
+    configuration: {
+      triggerType: 'Schedule'
+      replicaTimeout: 900
+      replicaRetryLimit: 1
+      scheduleTriggerConfig: {
+        cronExpression: retentionCron
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+      registries: [
+        {
+          server: acr.properties.loginServer
+          identity: uami.id
+        }
+      ]
+      secrets: [
+        {
+          name: 'database-url'
+          value: adminDatabaseUrl
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'retention'
+          image: migrateImage
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          command: [
+            'node'
+          ]
+          args: [
+            'scripts/db-ops.cjs'
+            'purge-expired'
+          ]
+          env: [
+            {
+              name: 'DATABASE_URL'
+              secretRef: 'database-url'
+            }
+          ]
+        }
+      ]
+    }
+  }
+  dependsOn: [
+    acrPull
   ]
 }
 

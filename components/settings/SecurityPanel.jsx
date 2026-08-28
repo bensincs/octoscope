@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import { ShieldLockIcon, AlertIcon } from "@primer/octicons-react";
+import { ShieldLockIcon, AlertIcon, ClockIcon } from "@primer/octicons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/Confirm";
+import { RETENTION_OPTIONS, describeRetention } from "@/lib/retention";
 import { Panel } from "./primitives";
 
 // Security and data-handling controls for a project.
@@ -30,6 +31,19 @@ export default function SecurityPanel({ project, patch, canAdmin }) {
   const [busy, setBusy] = useState(false);
 
   const localOnly = !!project.localOnlyGithubData;
+  const retention = project.retentionDays ?? null;
+
+  async function setRetention(value) {
+    setBusy(true);
+    try {
+      await patch({ retentionDays: value === "none" ? null : Number(value) });
+      toast.success("Retention updated.");
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function toggleLocalOnly(next) {
     if (next) {
@@ -97,6 +111,37 @@ export default function SecurityPanel({ project, patch, canAdmin }) {
             <p>
               Each member now maintains their own copy, so refreshing costs
               GitHub API quota per person rather than once for everyone.
+            </p>
+          )}
+        </Control>
+        <Control
+          icon={<ClockIcon size={16} />}
+          title="Delete cached GitHub data after a period"
+          action={
+            <select
+              className="gh-input px-2.5 py-1.5 text-sm disabled:opacity-50"
+              value={retention ?? "none"}
+              disabled={!canAdmin || busy || localOnly}
+              onChange={(e) => setRetention(e.target.value)}
+            >
+              {RETENTION_OPTIONS.map((o) => (
+                <option key={o.label} value={o.days ?? "none"}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          }
+        >
+          <p>
+            Issues, pull requests and decision records are{" "}
+            {describeRetention(retention)}. Expired data stops being shown
+            immediately and is deleted by a nightly sweep, so the policy is
+            enforced rather than only displayed.
+          </p>
+          {localOnly && (
+            <p>
+              Not applicable while GitHub data is kept out of the database —
+              nothing is stored for this to apply to.
             </p>
           )}
         </Control>
