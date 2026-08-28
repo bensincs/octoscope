@@ -121,7 +121,9 @@ export default function PullRequestsBoard({ projectId, localOnly = false }) {
           } failed: ${json.errors.map((e) => e.repo).join(", ")}`
         );
       } else {
-        toast.success(`Refreshed ${json.pullRequests.length} open pull requests.`);
+        toast.success(
+          `Refreshed ${json.pullRequests?.length ?? 0} open pull requests.`
+        );
       }
     } catch (e) {
       toast.error(e.message);
@@ -147,7 +149,8 @@ export default function PullRequestsBoard({ projectId, localOnly = false }) {
 
   // Flags are computed from the CURRENT rulebook against cached PR state, so
   // toggling a rule in Settings takes effect without another GitHub fetch.
-  const annotated = annotatePullRequests(data.pullRequests, data.config);
+  const rows = Array.isArray(data.pullRequests) ? data.pullRequests : [];
+  const annotated = annotatePullRequests(rows, data.config);
   const flaggedTotal = annotated.filter((pr) => pr.flags.length > 0).length;
   const visible = onlyFlagged ? annotated.filter((pr) => pr.flags.length > 0) : annotated;
   const groups = groupByAuthor(visible);
@@ -159,7 +162,7 @@ export default function PullRequestsBoard({ projectId, localOnly = false }) {
         <div>
           <h1 className="text-xl font-normal text-fg">Pull requests</h1>
           <p className="mt-1 text-sm text-muted">
-            {data.pullRequests.length} open across your connected repositories
+            {rows.length} open across your connected repositories
             {" · "}
             <span className={stale ? "text-attention" : undefined}>
               refreshed {describeAge(data.refreshedAt)}

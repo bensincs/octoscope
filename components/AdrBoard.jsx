@@ -66,9 +66,9 @@ export default function AdrBoard({ projectId, localOnly = false }) {
       setError(null);
       // Keep the open record open across a refresh if it still exists.
       setSelected((cur) =>
-        cur ? json.adrs.find((a) => a.path === cur.path) ?? null : null
+        cur ? (json.adrs ?? []).find((a) => a.path === cur.path) ?? null : null
       );
-      toast.success(`Refreshed ${json.adrs.length} records.`);
+      toast.success(`Refreshed ${json.adrs?.length ?? 0} records.`);
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -91,6 +91,7 @@ export default function AdrBoard({ projectId, localOnly = false }) {
     );
   }
 
+  const adrs = Array.isArray(data.adrs) ? data.adrs : [];
   const stale = isStale(data.refreshedAt);
 
   return (
@@ -101,7 +102,7 @@ export default function AdrBoard({ projectId, localOnly = false }) {
           <p className="mt-1 text-sm text-muted">
             {data.source ? (
               <>
-                {data.adrs.length} record{data.adrs.length === 1 ? "" : "s"} from{" "}
+                {adrs.length} record{adrs.length === 1 ? "" : "s"} from{" "}
                 <span className="font-medium text-fg">
                   {data.source.repo}/{data.source.path}
                 </span>
@@ -144,7 +145,7 @@ export default function AdrBoard({ projectId, localOnly = false }) {
         </div>
       )}
 
-      {data.adrs.length === 0 ? (
+      {adrs.length === 0 ? (
         <div className="rounded-md border border-dashed border-border px-4 py-10 text-center text-sm text-muted">
           {data.refreshedAt
             ? "No markdown files found in that folder."
@@ -153,7 +154,7 @@ export default function AdrBoard({ projectId, localOnly = false }) {
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
           <ul className="gh-card divide-y divide-border overflow-hidden lg:sticky lg:top-4 lg:self-start">
-            {data.adrs.map((adr) => {
+            {adrs.map((adr) => {
               const active = selected?.path === adr.path;
               return (
                 <li key={adr.id}>
