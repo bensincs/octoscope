@@ -263,22 +263,50 @@ async function expectedShape() {
     } catch {
       continue; // not a pgTable export
     }
-    tables.set(cfg.name, new Set(cfg.columns.map((c) => c.name)));
+    tables.set(
+      cfg.name,
+      new Map(cfg.columns.map((c) => [c.name, normalizeType(c.getSQLType())])),
+    );
   }
   return tables;
+}
+
+/**
+ * Reduce a Postgres type to a comparable form.
+ *
+ * drizzle's getSQLType() and information_schema.data_type already agree on the
+ * types this schema uses ("uuid", "jsonb", "timestamp with time zone"), so this
+ * only smooths over the aliases either side might produce. Anything unrecognised
+ * passes through unchanged and is compared literally.
+ */
+function normalizeType(type) {
+  const t = String(type ?? "").toLowerCase().trim();
+  const aliases = {
+    timestamptz: "timestamp with time zone",
+    timestamp: "timestamp without time zone",
+    "character varying": "varchar",
+    int4: "integer",
+    int8: "bigint",
+    int2: "smallint",
+    bool: "boolean",
+    float8: "double precision",
+  };
+  // Length/precision qualifiers are not something push changes on its own.
+  const bare = t.replace(/\(.*\)$/, "").trim();
+  return aliases[bare] ?? bare;
 }
 
 /** Tables and columns actually present in the database. */
 async function liveShape() {
   const { rows } = await pool.query(
-    `select table_name, column_name
+    `select table_name, column_name, data_type
        from information_schema.columns
       where table_schema = 'public'`,
   );
   const tables = new Map();
   for (const r of rows) {
-    if (!tables.has(r.table_name)) tables.set(r.table_name, new Set());
-    tables.get(r.table_name).add(r.column_name);
+    if (!tables.has(r.table_name)) tables.set(r.table_name, new Map());
+    tables.get(r.table_name).set(r.column_name, normalizeType(r.data_type));
   }
   return tables;
 }
@@ -292,8 +320,16 @@ function diffShapes(expected, live) {
       additive.push(`create table ${table}`);
       continue;
     }
-    for (const col of cols) {
-      if (!live.get(table).has(col)) additive.push(`add ${table}.${col}`);
+    for (const [col, type] of cols) {
+      const liveType = live.get(table).get(col);
+      if (liveType === undefined) {
+        additive.push(`add ${table}.${col}`);
+      } else if (liveType !== type) {
+        // A type change rewrites every value in the column and can lose data
+        // silently — jsonb to text is reversible, text to integer is not.
+        // Presence checks alone would wave this through.
+        destructive.push(`ALTER ${table}.${col} ${liveType} -> ${type}`);
+      }
     }
   }
   for (const [table, cols] of live) {
@@ -301,7 +337,7 @@ function diffShapes(expected, live) {
       destructive.push(`DROP TABLE ${table}`);
       continue;
     }
-    for (const col of cols) {
+    for (const col of cols.keys()) {
       if (!expected.get(table).has(col)) destructive.push(`DROP ${table}.${col}`);
     }
   }
