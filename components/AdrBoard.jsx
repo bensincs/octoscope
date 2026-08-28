@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { SyncIcon, FileIcon, LinkExternalIcon, ClockIcon } from "@primer/octicons-react";
 import { useToast } from "@/components/Toast";
+import { readLocal, writeLocal, FEATURES } from "@/lib/browserStore";
 import { Spinner } from "@/components/projectForms";
 import Markdown from "@/components/Markdown";
 import { describeAge, isStale } from "@/lib/pullRequests";
@@ -15,7 +16,7 @@ function modified(iso) {
   });
 }
 
-export default function AdrBoard({ projectId }) {
+export default function AdrBoard({ projectId, localOnly = false }) {
   const toast = useToast();
   const [data, setData] = useState(null); // null = loading
   const [error, setError] = useState(null);
@@ -27,7 +28,12 @@ export default function AdrBoard({ projectId }) {
       const res = await fetch(`/api/projects/${projectId}/adrs`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load ADRs");
-      setData(json);
+      if (json.localOnly) {
+        const local = await readLocal(projectId, FEATURES.ADRS);
+        setData(local ? { ...local, source: json.source, localOnly: true } : json);
+      } else {
+        setData(json);
+      }
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -47,6 +53,14 @@ export default function AdrBoard({ projectId }) {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(json.fields?.[0]?.message || json.error || "Refresh failed");
+      }
+      if (json.localOnly) {
+        const stored = await writeLocal(projectId, FEATURES.ADRS, json);
+        if (!stored) {
+          toast.error(
+            "Couldn't save to this browser — the data is in memory and will be lost on reload."
+          );
+        }
       }
       setData(json);
       setError(null);
@@ -109,6 +123,13 @@ export default function AdrBoard({ projectId }) {
           {busy ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+
+      {data.localOnly && (
+        <p className="rounded-md border border-border bg-subtle px-3 py-2 text-xs text-muted">
+          This project keeps GitHub data out of the database — what you see is
+          stored in this browser only, so refreshing updates it for you alone.
+        </p>
+      )}
 
       {stale && data.refreshedAt && (
         <div className="flex items-start gap-2 rounded-md border border-attention/40 bg-attention/10 px-3 py-2 text-xs text-fg">

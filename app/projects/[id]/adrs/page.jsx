@@ -19,5 +19,8 @@ export default function ProjectAdrPage() {
 
   if (!project || !configured) return null;
 
-  return <AdrBoard projectId={projectId} />;
+  return <AdrBoard
+      projectId={projectId}
+      localOnly={!!project.localOnlyGithubData}
+    />;
 }

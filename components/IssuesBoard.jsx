@@ -6,6 +6,7 @@ import { describeAge, isStale } from "@/lib/pullRequests";
 import AuditView from "@/components/AuditView";
 import { Spinner } from "@/components/projectForms";
 import { useToast } from "@/components/Toast";
+import { readLocal, writeLocal, FEATURES } from "@/lib/browserStore";
 
 // Issues surface for a saved project.
 //
@@ -27,7 +28,14 @@ export default function IssuesBoard({ projectId, project }) {
       const res = await fetch(`/api/projects/${projectId}/issues`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load issues");
-      setSnapshot(json);
+      if (json.localOnly) {
+        const local = await readLocal(projectId, FEATURES.ISSUES);
+        // config comes from the server even locally: the rulebook is project
+        // configuration, not GitHub data, and must stay live.
+        setSnapshot(local ? { ...local, config: json.config, localOnly: true } : json);
+      } else {
+        setSnapshot(json);
+      }
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -47,6 +55,14 @@ export default function IssuesBoard({ projectId, project }) {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(json.fields?.[0]?.message || json.error || "Refresh failed");
+      }
+      if (json.localOnly) {
+        const stored = await writeLocal(projectId, FEATURES.ISSUES, json);
+        if (!stored) {
+          toast.error(
+            "Couldn't save to this browser — the data is in memory and will be lost on reload."
+          );
+        }
       }
       setSnapshot(json);
       setError(null);
@@ -120,6 +136,13 @@ export default function IssuesBoard({ projectId, project }) {
           {project.boards.length} board{project.boards.length === 1 ? "" : "s"}
         </span>
       </div>
+
+      {snapshot?.localOnly && (
+        <p className="rounded-md border border-border bg-subtle px-3 py-2 text-xs text-muted">
+          This project keeps GitHub data out of the database — what you see is
+          stored in this browser only, so refreshing updates it for you alone.
+        </p>
+      )}
 
       {scopeChanged && data && (
         <div className="flex items-start gap-2 rounded-md border border-attention/40 bg-attention/10 px-3 py-2 text-xs text-fg">

@@ -3,6 +3,7 @@
 // section nav drives the visible panel:
 //   General      → General, Welcome, Environments, Rulebook
 //   Connections  → Repositories, Boards, Decision records
+//   Security     → Data handling
 //   Collaborators→ Members (user access control)
 //   (Danger zone, owner-only, sits on its own at the bottom)
 // What a member can change depends on their role (viewer/editor/admin/owner).
@@ -19,6 +20,7 @@ import {
   BookmarkIcon,
   FileIcon,
   CommentDiscussionIcon,
+  ShieldLockIcon,
 } from "@primer/octicons-react";
 import { useOwners } from "@/components/projectForms";
 import { meetsRole } from "@/lib/access";
@@ -32,6 +34,7 @@ import EnvironmentsPanel from "./settings/EnvironmentsPanel";
 import WelcomePanel from "./settings/WelcomePanel";
 import AdrPanel from "./settings/AdrPanel";
 import AgentPanel from "./settings/AgentPanel";
+import SecurityPanel from "./settings/SecurityPanel";
 import DangerPanel from "./settings/DangerPanel";
 
 const NAV = [
@@ -51,6 +54,12 @@ const NAV = [
       { key: "boards", label: "Boards", icon: <ProjectIcon size={16} /> },
       { key: "adrs", label: "Decision records", icon: <FileIcon size={16} /> },
       { key: "agent", label: "Agent", icon: <CommentDiscussionIcon size={16} /> },
+    ],
+  },
+  {
+    heading: "Security",
+    items: [
+      { key: "security", label: "Data handling", icon: <ShieldLockIcon size={16} /> },
     ],
   },
   {
@@ -213,6 +222,9 @@ export default function ProjectSettings({
               onChanged={reload}
               canEdit={canEdit}
             />
+          )}
+          {section === "security" && (
+            <SecurityPanel project={project} patch={patch} canAdmin={canAdmin} />
           )}
           {section === "collaborators" && (
             <CollaboratorsPanel project={project} canAdmin={canAdmin} />

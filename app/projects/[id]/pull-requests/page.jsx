@@ -19,5 +19,8 @@ export default function ProjectPullRequestsPage() {
 
   if (!project || repoCount === 0) return null;
 
-  return <PullRequestsBoard projectId={projectId} />;
+  return <PullRequestsBoard
+      projectId={projectId}
+      localOnly={!!project.localOnlyGithubData}
+    />;
 }

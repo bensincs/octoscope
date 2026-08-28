@@ -1,0 +1,112 @@
+"use client";
+import { useState } from "react";
+import { ShieldLockIcon, AlertIcon } from "@primer/octicons-react";
+import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/Confirm";
+import { Panel } from "./primitives";
+
+// Security and data-handling controls for a project.
+//
+// Structured as a list of independent controls so further settings can be added
+// alongside without reshaping the panel.
+function Control({ icon, title, children, action }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-3 py-3 last:border-b-0">
+      <div className="flex min-w-0 flex-1 gap-2.5">
+        <span className="mt-0.5 shrink-0 text-muted">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-fg">{title}</p>
+          <div className="mt-0.5 space-y-1.5 text-xs text-muted">{children}</div>
+        </div>
+      </div>
+      <div className="shrink-0">{action}</div>
+    </div>
+  );
+}
+
+export default function SecurityPanel({ project, patch, canAdmin }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState(false);
+
+  const localOnly = !!project.localOnlyGithubData;
+
+  async function toggleLocalOnly(next) {
+    if (next) {
+      const ok = await confirm({
+        title: "Keep GitHub data out of the database?",
+        body: "Everything currently cached for this project — issues, pull requests and decision records — will be deleted immediately. Members will need to refresh each tab to repopulate it in their own browser.",
+        confirmLabel: "Enable and delete cached data",
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      await patch({ localOnlyGithubData: next });
+      toast.success(
+        next
+          ? "GitHub data will no longer be stored, and cached data was deleted."
+          : "GitHub data will be cached in the database again."
+      );
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel
+      title="Security"
+      blurb="Controls over how this project handles data."
+    >
+      <div className="rounded-md border border-border">
+        <Control
+          icon={<ShieldLockIcon size={16} />}
+          title="Keep GitHub data out of the database"
+          action={
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={localOnly}
+                disabled={!canAdmin || busy}
+                onChange={(e) => toggleLocalOnly(e.target.checked)}
+              />
+              <span className="text-fg">{localOnly ? "On" : "Off"}</span>
+            </label>
+          }
+        >
+          <p>
+            Issues, pull requests and decision records are returned straight to
+            each member&apos;s browser and held there (IndexedDB) instead of
+            being cached in our database. Turning this on deletes anything
+            already cached for this project.
+          </p>
+          <p className="flex items-start gap-1.5 text-attention">
+            <span className="mt-0.5 shrink-0">
+              <AlertIcon size={12} />
+            </span>
+            <span>
+              Our server still <strong>fetches</strong> from GitHub, because the
+              access tokens live server-side and sending them to a browser would
+              be worse. The guarantee is that nothing fetched is written to our
+              database — not that it never reaches our servers.
+            </span>
+          </p>
+          {localOnly && (
+            <p>
+              Each member now maintains their own copy, so refreshing costs
+              GitHub API quota per person rather than once for everyone.
+            </p>
+          )}
+        </Control>
+      </div>
+
+      {!canAdmin && (
+        <p className="mt-3 text-xs text-muted">
+          Only project admins can change these settings.
+        </p>
+      )}
+    </Panel>
+  );
+}

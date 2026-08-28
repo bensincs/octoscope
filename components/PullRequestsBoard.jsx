@@ -11,6 +11,7 @@ import {
   ClockIcon,
 } from "@primer/octicons-react";
 import { useToast } from "@/components/Toast";
+import { readLocal, writeLocal, FEATURES } from "@/lib/browserStore";
 import { Spinner } from "@/components/projectForms";
 import {
   groupByAuthor,
@@ -58,7 +59,7 @@ function prAge(iso) {
   return `${days} days`;
 }
 
-export default function PullRequestsBoard({ projectId }) {
+export default function PullRequestsBoard({ projectId, localOnly = false }) {
   const toast = useToast();
   const [data, setData] = useState(null); // null = loading
   const [error, setError] = useState(null);
@@ -71,7 +72,16 @@ export default function PullRequestsBoard({ projectId }) {
       const res = await fetch(`/api/projects/${projectId}/pull-requests`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load pull requests");
-      setData(json);
+
+      // In local-only mode the server holds nothing, so the cached copy comes
+      // from this browser. The server response still supplies the rulebook,
+      // which is configuration rather than GitHub data.
+      if (json.localOnly) {
+        const local = await readLocal(projectId, FEATURES.PULL_REQUESTS);
+        setData(local ? { ...local, config: json.config, localOnly: true } : json);
+      } else {
+        setData(json);
+      }
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -91,6 +101,14 @@ export default function PullRequestsBoard({ projectId }) {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(json.fields?.[0]?.message || json.error || "Refresh failed");
+      }
+      if (json.localOnly) {
+        const stored = await writeLocal(projectId, FEATURES.PULL_REQUESTS, json);
+        if (!stored) {
+          toast.error(
+            "Couldn't save to this browser — the data is in memory and will be lost on reload."
+          );
+        }
       }
       setData(json);
       setError(null);
@@ -171,6 +189,13 @@ export default function PullRequestsBoard({ projectId }) {
           </button>
         </div>
       </div>
+
+      {data.localOnly && (
+        <p className="rounded-md border border-border bg-subtle px-3 py-2 text-xs text-muted">
+          This project keeps GitHub data out of the database — what you see is
+          stored in this browser only, so refreshing updates it for you alone.
+        </p>
+      )}
 
       {stale && data.refreshedAt && (
         <div className="flex items-start gap-2 rounded-md border border-attention/40 bg-attention/10 px-3 py-2 text-xs text-fg">
