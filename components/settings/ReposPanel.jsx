@@ -62,7 +62,7 @@ export default function ReposPanel({
             key={r.id}
             primary={r.nameWithOwner}
             endpoint={`/api/projects/${project.id}/repos/${r.id}`}
-            hasPat={r.hasPat}
+            hasPat={project.useViewerToken ? false : r.hasPat}
             onRemove={() => remove(r)}
             removeLabel="Remove repository"
             canEdit={canEdit}
@@ -72,6 +72,7 @@ export default function ReposPanel({
 
       <Modal open={adding} onClose={() => setAdding(false)} title="Add a repository">
         <AddRepoForm
+          requirePat={!project.useViewerToken}
           projectId={project.id}
           owners={owners}
           onAdded={(repo) => {

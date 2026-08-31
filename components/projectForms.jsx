@@ -117,7 +117,16 @@ export function ReplacePat({ endpoint, onDone }) {
 
 // Add a repository (with its own PAT) to an existing project. Calls
 // onAdded(repo) with the created, masked repo view on success.
-export function AddRepoForm({ projectId, owners, onAdded, submitLabel = "Add repository" }) {
+export function AddRepoForm({
+  projectId,
+  owners,
+  onAdded,
+  // When the project uses each member's GitHub sign-in there is no
+  // per-resource token to collect, so the field is hidden rather than
+  // demanding something that would be discarded.
+  requirePat = true,
+  submitLabel = "Add repository",
+}) {
   const [owner, setOwner] = useState("");
   const [name, setName] = useState("");
   const [pat, setPat] = useState("");
@@ -209,6 +218,7 @@ export function AddRepoForm({ projectId, owners, onAdded, submitLabel = "Add rep
         </div>
       </div>
 
+      {requirePat && (
       <input
         type="password"
         autoComplete="off"
@@ -217,6 +227,7 @@ export function AddRepoForm({ projectId, owners, onAdded, submitLabel = "Add rep
         value={pat}
         onChange={(e) => setPat(e.target.value)}
       />
+      )}
       {error && <p className="text-[11px] text-danger">{error}</p>}
       <button
         type="submit"
@@ -231,7 +242,13 @@ export function AddRepoForm({ projectId, owners, onAdded, submitLabel = "Add rep
 
 // Add a Projects v2 board (with its own PAT) to an existing project. Calls
 // onAdded(board) with the created, masked board view on success.
-export function AddBoardForm({ projectId, owners, onAdded, submitLabel = "Add board" }) {
+export function AddBoardForm({
+  projectId,
+  owners,
+  onAdded,
+  requirePat = true,
+  submitLabel = "Add board",
+}) {
   const [ownerLogin, setOwnerLogin] = useState("");
   const [projectNumber, setProjectNumber] = useState("");
   const [title, setTitle] = useState("");
@@ -341,6 +358,7 @@ export function AddBoardForm({ projectId, owners, onAdded, submitLabel = "Add bo
         value={title}
         onChange={(e) => setTitle(e.target.value)}
       />
+      {requirePat && (
       <input
         type="password"
         autoComplete="off"
@@ -349,6 +367,7 @@ export function AddBoardForm({ projectId, owners, onAdded, submitLabel = "Add bo
         value={pat}
         onChange={(e) => setPat(e.target.value)}
       />
+      )}
       {error && <p className="text-[11px] text-danger">{error}</p>}
       <button
         type="submit"

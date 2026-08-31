@@ -67,7 +67,7 @@ export default function BoardsPanel({
             primary={label(b)}
             secondary={`${b.ownerLogin} #${b.projectNumber}`}
             endpoint={`/api/projects/${project.id}/boards/${b.id}`}
-            hasPat={b.hasPat}
+            hasPat={project.useViewerToken ? false : b.hasPat}
             onRemove={() => remove(b)}
             removeLabel="Remove board"
             canEdit={canEdit}
@@ -77,6 +77,7 @@ export default function BoardsPanel({
 
       <Modal open={adding} onClose={() => setAdding(false)} title="Add a board">
         <AddBoardForm
+          requirePat={!project.useViewerToken}
           projectId={project.id}
           owners={owners}
           onAdded={(board) => {

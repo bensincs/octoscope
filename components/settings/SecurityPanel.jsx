@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
-import { ShieldLockIcon, AlertIcon, ClockIcon } from "@primer/octicons-react";
+import {
+  ShieldLockIcon,
+  AlertIcon,
+  ClockIcon,
+  KeyIcon,
+} from "@primer/octicons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/Confirm";
 import { RETENTION_OPTIONS, describeRetention } from "@/lib/retention";
@@ -31,6 +36,31 @@ export default function SecurityPanel({ project, patch, canAdmin }) {
   const [busy, setBusy] = useState(false);
 
   const localOnly = !!project.localOnlyGithubData;
+  const viewerToken = !!project.useViewerToken;
+
+  async function toggleViewerToken(next) {
+    if (next) {
+      const ok = await confirm({
+        title: "Use each member's GitHub sign-in?",
+        body: "Stored access tokens for this project's repositories and boards will be deleted, and each member will fetch using their own GitHub account. Cached data is removed and kept in each browser instead, because a shared cache would let members read data GitHub would refuse them. Switching back means re-entering the tokens.",
+        confirmLabel: "Switch to member sign-in",
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      await patch({ useViewerToken: next });
+      toast.success(
+        next
+          ? "Stored tokens deleted — members now use their own GitHub sign-in."
+          : "Members will use stored tokens again. Add one to each repository."
+      );
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
   const retention = project.retentionDays ?? null;
 
   async function setRetention(value) {
@@ -83,7 +113,7 @@ export default function SecurityPanel({ project, patch, canAdmin }) {
               <input
                 type="checkbox"
                 checked={localOnly}
-                disabled={!canAdmin || busy}
+                disabled={!canAdmin || busy || viewerToken}
                 onChange={(e) => toggleLocalOnly(e.target.checked)}
               />
               <span className="text-fg">{localOnly ? "On" : "Off"}</span>
@@ -113,7 +143,51 @@ export default function SecurityPanel({ project, patch, canAdmin }) {
               GitHub API quota per person rather than once for everyone.
             </p>
           )}
+          {viewerToken && (
+            <p>Required while members use their own GitHub sign-in.</p>
+          )}
         </Control>
+        <Control
+          icon={<KeyIcon size={16} />}
+          title="Use each member's GitHub sign-in instead of stored tokens"
+          action={
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={viewerToken}
+                disabled={!canAdmin || busy}
+                onChange={(e) => toggleViewerToken(e.target.checked)}
+              />
+              <span className="text-fg">{viewerToken ? "On" : "Off"}</span>
+            </label>
+          }
+        >
+          <p>
+            No access tokens are stored for this project. Each member fetches
+            with their own GitHub account, so they see exactly what GitHub
+            grants them — and a member who loses access to a repository loses it
+            here at the same moment.
+          </p>
+          <p className="flex items-start gap-1.5 text-attention">
+            <span className="mt-0.5 shrink-0">
+              <AlertIcon size={12} />
+            </span>
+            <span>
+              Turning this on <strong>deletes</strong> the stored tokens and
+              forces data to stay in each browser. A shared cache filled by one
+              member&apos;s token would be readable by members GitHub would have
+              refused, so the two go together rather than being separate
+              choices.
+            </span>
+          </p>
+          {viewerToken && (
+            <p>
+              A repository a member cannot see reports an error for them alone;
+              the rest still loads.
+            </p>
+          )}
+        </Control>
+
         <Control
           icon={<ClockIcon size={16} />}
           title="Delete cached GitHub data after a period"
