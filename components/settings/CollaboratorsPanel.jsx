@@ -6,7 +6,8 @@ import { XIcon } from "@primer/octicons-react";
 import { Spinner } from "@/components/projectForms";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/Confirm";
-import { Panel, ListBox, ResourceRow } from "./primitives";
+import { INVITE_DURATIONS, DEFAULT_INVITE_HOURS } from "@/lib/inviteDurations";
+import { Panel, ListBox } from "./primitives";
 
 function InviteLinks({ projectId, canAdmin }) {
   const toast = useToast();

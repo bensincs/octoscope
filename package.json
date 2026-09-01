@@ -6,14 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "@primer/octicons-react": "^19.28.1",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^10.9.1",
     "tailwindcss": "^4.1.11",
     "vitest": "^4.1.9"
   }
