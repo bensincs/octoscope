@@ -18,6 +18,7 @@
  *   node scripts/db-ops.cjs preflight
  *   node scripts/db-ops.cjs verify-schema
  *   node scripts/db-ops.cjs purge-expired
+ *   node scripts/db-ops.cjs smoke
  *
  * Requires DATABASE_URL. `seed-admin` also accepts SEED_LOGIN as a fallback.
  */
@@ -419,6 +420,174 @@ async function purgeExpired() {
   console.log(`PURGE: removed ${total} rows across ${projects.length} project(s)`);
 }
 
+/**
+ * Exercise the data layer against the real database.
+ *
+ * The unit tests cover pure logic and the build proves things compile, but
+ * neither shows that a route's data-layer path actually runs — two features
+ * shipped broken precisely because a green build was mistaken for evidence.
+ * This drives the paths a browser would, using throwaway rows it removes again.
+ *
+ * Writes to the live database on purpose. Everything it creates is namespaced
+ * and deleted in a finally block, and it touches no existing row.
+ */
+async function smoke() {
+  const { pathToFileURL } = require("node:url");
+  const { resolve } = require("node:path");
+  const P = await import(
+    pathToFileURL(resolve(__dirname, "../lib/db/projects.js")).href
+  );
+
+  const stamp = Date.now();
+  const results = [];
+  let ownerId = null;
+  let inviteeId = null;
+  let projectId = null;
+
+  const step = async (name, fn) => {
+    try {
+      await fn();
+      results.push(`  PASS  ${name}`);
+    } catch (e) {
+      results.push(`  FAIL  ${name}: ${e.message}`);
+      throw e;
+    }
+  };
+
+  try {
+    // Two throwaway identities: ownership transfer and invite redemption both
+    // need a second account, and testing them with one would prove nothing.
+    const mk = async (login) => {
+      const r = await pool.query(
+        `insert into users (github_id, login, name)
+         values ($1, $2, $3) returning id`,
+        [`smoke-${login}-${stamp}`, `smoke-${login}-${stamp}`, "Smoke Test"],
+      );
+      return r.rows[0].id;
+    };
+    ownerId = await mk("owner");
+    inviteeId = await mk("invitee");
+
+    await step("createProject", async () => {
+      const p = await P.createProject(ownerId, { name: `smoke-${stamp}` });
+      projectId = p.id;
+      if (!projectId) throw new Error("no id returned");
+    });
+
+    await step("getProject", async () => {
+      const p = await P.getProject(ownerId, projectId);
+      if (p.viewerRole !== "owner") throw new Error(`role was ${p.viewerRole}`);
+    });
+
+    await step("addEnvironment + claim + release", async () => {
+      const env = await P.addEnvironment(ownerId, projectId, {
+        name: "smoke-env",
+        description: "temporary",
+      });
+      const claimed = await P.claimEnvironment(ownerId, projectId, env.id, {
+        note: "smoke",
+        expiresInHours: 1,
+      });
+      if (!claimed.claim) throw new Error("claim not recorded");
+      const released = await P.releaseEnvironment(ownerId, projectId, env.id);
+      if (released.claim) throw new Error("claim not cleared");
+      await P.deleteEnvironment(ownerId, projectId, env.id);
+    });
+
+    let inviteToken = null;
+    await step("createInvite", async () => {
+      const inv = await P.createInvite(ownerId, projectId, {
+        role: "editor",
+        expiresInHours: 1,
+      });
+      inviteToken = inv.token;
+      if (!inviteToken) throw new Error("no token returned");
+    });
+
+    await step("previewInvite", async () => {
+      const pv = await P.previewInvite(inviteToken);
+      if (!pv.valid || pv.role !== "editor") {
+        throw new Error(`unexpected preview: ${JSON.stringify(pv)}`);
+      }
+    });
+
+    await step("acceptInvite grants membership", async () => {
+      const r = await P.acceptInvite(inviteeId, inviteToken);
+      if (r.alreadyMember || r.role !== "editor") {
+        throw new Error(`unexpected result: ${JSON.stringify(r)}`);
+      }
+    });
+
+    await step("invite is single-use", async () => {
+      try {
+        await P.acceptInvite(ownerId, inviteToken);
+        throw new Error("second redemption succeeded");
+      } catch (e) {
+        if (!/already been used/i.test(e.errors?.[0]?.message ?? e.message)) throw e;
+      }
+    });
+
+    await step("listInvites shows it used", async () => {
+      const list = await P.listInvites(ownerId, projectId);
+      if (list[0]?.status !== "used") {
+        throw new Error(`status was ${list[0]?.status}`);
+      }
+    });
+
+    await step("transferOwnership demotes the outgoing owner", async () => {
+      const members = await P.listCollaborators(ownerId, projectId);
+      const target = members.find((m) => m.role === "editor");
+      if (!target) throw new Error("invitee is not a collaborator");
+      await P.transferOwnership(ownerId, projectId, target.id);
+
+      const asNew = await P.getProject(inviteeId, projectId);
+      if (asNew.viewerRole !== "owner") {
+        throw new Error(`new owner role is ${asNew.viewerRole}`);
+      }
+      const asOld = await P.getProject(ownerId, projectId);
+      if (asOld.viewerRole !== "admin") {
+        throw new Error(`outgoing owner role is ${asOld.viewerRole}`);
+      }
+    });
+
+    await step("getAgentConnection", async () => {
+      const conn = await P.getAgentConnection(inviteeId, projectId);
+      if (conn.enabled !== false) throw new Error("expected agent disabled");
+    });
+
+    console.log(results.join("\n"));
+    console.log(`SMOKE: ${results.length} checks passed`);
+  } catch (e) {
+    console.log(results.join("\n"));
+    console.error("SMOKE FAILED");
+    throw e;
+  } finally {
+    // Cascades remove the project's children; users go last.
+    if (projectId) {
+      await pool.query("delete from projects where id = $1", [projectId]).catch(() => {});
+    }
+    for (const id of [ownerId, inviteeId]) {
+      if (id) await pool.query("delete from users where id = $1", [id]).catch(() => {});
+    }
+
+    // Assert the cleanup rather than assuming it. A smoke test that quietly
+    // leaves rows behind in a production database is worse than none, and the
+    // finally block running is not proof that it worked.
+    const left = await pool.query(
+      `select
+         (select count(*) from users where login like 'smoke-%')::int as users,
+         (select count(*) from projects where name like 'smoke-%')::int as projects`,
+    );
+    const { users: u, projects: pr } = left.rows[0];
+    if (u > 0 || pr > 0) {
+      console.error(`SMOKE CLEANUP INCOMPLETE: ${u} user(s), ${pr} project(s) left`);
+      process.exitCode = 1;
+    } else {
+      console.log("SMOKE CLEANUP: nothing left behind");
+    }
+  }
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 const commands = {
   tables,
@@ -429,6 +598,7 @@ const commands = {
   preflight,
   "verify-schema": verifySchema,
   "purge-expired": purgeExpired,
+  smoke,
 };
 const run = commands[cmd];
 

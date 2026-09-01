@@ -8,6 +8,176 @@ import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/Confirm";
 import { Panel, ListBox, ResourceRow } from "./primitives";
 
+function InviteLinks({ projectId, canAdmin }) {
+  const toast = useToast();
+  const [invites, setInvites] = useState(null);
+  const [role, setRole] = useState("viewer");
+  const [hours, setHours] = useState(DEFAULT_INVITE_HOURS);
+  const [issued, setIssued] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/invites`);
+      const data = await res.json();
+      if (res.ok) setInvites(data.invites);
+      else setInvites([]);
+    } catch {
+      setInvites([]);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (canAdmin) load();
+  }, [canAdmin, load]);
+
+  async function create() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/invites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, expiresInHours: Number(hours) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.fields?.[0]?.message || data.error || "Failed");
+      }
+      // Shown once. Only a hash is stored, so this cannot be retrieved later.
+      setIssued(`${window.location.origin}/invite/${data.token}`);
+      await load();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(id) {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/invites/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to revoke");
+      }
+      await load();
+      toast.success("Invite revoked.");
+    } catch (e) {
+      toast.error(e.message);
+    }
+  }
+
+  if (!canAdmin) return null;
+
+  const active = (invites ?? []).filter((i) => i.status === "active");
+
+  return (
+    <div className="mt-8">
+      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+        Invite links
+      </h3>
+      <p className="mb-3 text-sm text-muted">
+        A link that works once and then expires. Anyone who opens it while
+        signed in joins with the role you choose, so treat it like a password.
+      </p>
+
+      {issued && (
+        <div className="mb-3 rounded-md border border-accent/40 bg-accent/10 px-3 py-2.5">
+          <p className="text-xs font-semibold text-fg">
+            Copy this now — it is not stored and cannot be shown again.
+          </p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded border border-border bg-canvas px-2 py-1 font-mono text-[11px] text-fg">
+              {issued}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(issued);
+                toast.success("Link copied.");
+              }}
+              className="btn shrink-0 px-2.5 py-1 text-xs"
+            >
+              Copy
+            </button>
+            <button
+              onClick={() => setIssued(null)}
+              className="shrink-0 text-xs text-muted hover:text-fg"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          className="gh-input px-2.5 py-1.5 text-sm"
+        >
+          <option value="viewer">Viewer</option>
+          <option value="editor">Editor</option>
+          <option value="admin">Admin</option>
+        </select>
+        <select
+          value={hours}
+          onChange={(e) => setHours(e.target.value)}
+          className="gh-input px-2.5 py-1.5 text-sm"
+        >
+          {INVITE_DURATIONS.map((d) => (
+            <option key={d.hours} value={d.hours}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={create}
+          disabled={busy}
+          className="btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
+        >
+          {busy ? "Creating…" : "Create link"}
+        </button>
+      </div>
+
+      <ListBox empty="No invite links.">
+        {(invites ?? []).map((i) => (
+          <div key={i.id} className="flex items-center justify-between gap-3 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-sm text-fg">
+                {i.role}
+                <span className="ml-2 rounded-full border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                  {i.status}
+                </span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted">
+                {i.createdBy && `by ${i.createdBy} · `}
+                {i.status === "active"
+                  ? `expires ${new Date(i.expiresAt).toLocaleString()}`
+                  : i.usedAt
+                    ? `used ${new Date(i.usedAt).toLocaleString()}`
+                    : `expired ${new Date(i.expiresAt).toLocaleString()}`}
+              </p>
+            </div>
+            {i.status === "active" && (
+              <button
+                onClick={() => revoke(i.id)}
+                className="shrink-0 text-xs text-danger hover:underline"
+              >
+                Revoke
+              </button>
+            )}
+          </div>
+        ))}
+      </ListBox>
+      {active.length === 0 && invites?.length > 0 && (
+        <p className="mt-2 text-[11px] text-muted">No links are currently usable.</p>
+      )}
+    </div>
+  );
+}
+
 export default function CollaboratorsPanel({ project, canAdmin }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -130,6 +300,7 @@ export default function CollaboratorsPanel({ project, canAdmin }) {
           }}
         />
       </Modal>
+      <InviteLinks projectId={project.id} canAdmin={canAdmin} />
     </Panel>
   );
 }
